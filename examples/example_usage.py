@@ -13,11 +13,18 @@ from pathlib import Path
 # Add the backend directory to the path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from video_processor import VideoProcessor
-from camera_handler import CameraHandler
-from object_tracker import ObjectTracker
-from detection_utils import DetectionUtils
-from config import Config
+try:
+    from .video_processor import VideoProcessor
+    from .camera_handler import CameraHandler
+    from .object_tracker import ObjectTracker
+    from .detection_utils import DetectionUtils
+    from .config import Config
+except ImportError:
+    from video_processor import VideoProcessor
+    from camera_handler import CameraHandler
+    from object_tracker import ObjectTracker
+    from detection_utils import DetectionUtils
+    from config import Config
 
 
 def setup_logging():

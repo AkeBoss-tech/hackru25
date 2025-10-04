@@ -13,7 +13,7 @@ class Config:
     """Configuration class for video processing backend."""
     
     # Model settings
-    DEFAULT_MODEL_PATH = "yolov8n.pt"
+    DEFAULT_MODEL_PATH = "yolov8n.pt"  # Will be resolved dynamically
     CONFIDENCE_THRESHOLD = 0.25
     DEVICE = "auto"  # "auto", "cpu", "cuda", "mps"
     
@@ -201,6 +201,37 @@ class Config:
             'frame_callback_interval': self.FRAME_CALLBACK_INTERVAL
         }
     
+    def _find_model_file(self) -> Optional[str]:
+        """
+        Find the YOLOv8 model file in common locations.
+        
+        Returns:
+            Path to model file if found, None otherwise
+        """
+        possible_paths = [
+            self.DEFAULT_MODEL_PATH,  # Current directory
+            f"../{self.DEFAULT_MODEL_PATH}",  # Parent directory
+            f"../../{self.DEFAULT_MODEL_PATH}",  # Grandparent directory
+            os.path.join(os.path.dirname(__file__), self.DEFAULT_MODEL_PATH),  # Backend directory
+            os.path.join(os.path.dirname(__file__), "..", self.DEFAULT_MODEL_PATH),  # Project root
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        
+        return None
+    
+    def get_model_path(self) -> str:
+        """
+        Get the actual path to the model file.
+        
+        Returns:
+            Path to model file
+        """
+        model_path = self._find_model_file()
+        return model_path if model_path else self.DEFAULT_MODEL_PATH
+    
     def setup_logging(self):
         """Setup logging based on configuration."""
         # Create formatter
@@ -226,18 +257,23 @@ class Config:
             file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
     
-    def validate(self) -> bool:
+    def validate(self, check_model_file: bool = True) -> bool:
         """
         Validate configuration settings.
         
+        Args:
+            check_model_file: Whether to check if model file exists
+            
         Returns:
             True if configuration is valid
         """
         errors = []
         
-        # Validate model path
-        if not os.path.exists(self.DEFAULT_MODEL_PATH):
-            errors.append(f"Model file not found: {self.DEFAULT_MODEL_PATH}")
+        # Validate model path (optional for testing)
+        if check_model_file:
+            model_path = self._find_model_file()
+            if not model_path:
+                errors.append(f"Model file not found: {self.DEFAULT_MODEL_PATH}")
         
         # Validate confidence threshold
         if not 0.0 <= self.CONFIDENCE_THRESHOLD <= 1.0:

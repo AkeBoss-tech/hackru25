@@ -188,7 +188,9 @@ class ObjectTracker:
             updated_detections.append(detection)
         
         # Increment disappeared count for tracks not matched
-        for track_id in self.tracks:
+        # Create a copy of track IDs to avoid modifying dictionary during iteration
+        track_ids = list(self.tracks.keys())
+        for track_id in track_ids:
             if track_id not in [d['track_id'] for d in updated_detections]:
                 self.disappeared_count[track_id] += 1
                 if self.disappeared_count[track_id] > self.max_disappeared:

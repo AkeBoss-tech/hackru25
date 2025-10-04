@@ -12,8 +12,12 @@ import time
 import logging
 from ultralytics import YOLO
 
-from .detection_utils import DetectionUtils
-from .object_tracker import ObjectTracker
+try:
+    from .detection_utils import DetectionUtils
+    from .object_tracker import ObjectTracker
+except ImportError:
+    from detection_utils import DetectionUtils
+    from object_tracker import ObjectTracker
 
 
 class VideoProcessor:
@@ -31,7 +35,7 @@ class VideoProcessor:
     
     def __init__(
         self,
-        model_path: str = "yolov8n.pt",
+        model_path: str = None,
         confidence_threshold: float = 0.25,
         device: str = "auto",
         enable_tracking: bool = True,
@@ -47,7 +51,19 @@ class VideoProcessor:
             enable_tracking: Whether to enable object tracking
             tracking_method: Tracking method to use ('bytetrack', 'botsort')
         """
-        self.model_path = model_path
+        # Set model path - use provided path or find it dynamically
+        if model_path is None:
+            try:
+                from .config import Config
+                config = Config()
+                self.model_path = config.get_model_path()
+            except ImportError:
+                from config import Config
+                config = Config()
+                self.model_path = config.get_model_path()
+        else:
+            self.model_path = model_path
+            
         self.confidence_threshold = confidence_threshold
         self.enable_tracking = enable_tracking
         self.tracking_method = tracking_method
@@ -196,7 +212,7 @@ class VideoProcessor:
                     break
                 
                 # Process frame
-                processed_frame, detections = self._process_frame(frame)
+                processed_frame, detections, raw_frame = self._process_frame(frame)
                 
                 # Update statistics
                 stats['processed_frames'] += 1
@@ -215,7 +231,7 @@ class VideoProcessor:
                     self.on_detection_callback(detections, frame, self.frame_count)
                 
                 if self.on_frame_callback:
-                    self.on_frame_callback(processed_frame, self.frame_count)
+                    self.on_frame_callback(processed_frame, self.frame_count, raw_frame)
                 
                 # Save frame if needed
                 if writer:
@@ -301,7 +317,7 @@ class VideoProcessor:
                     break
                 
                 # Process frame
-                processed_frame, detections = self._process_frame(frame)
+                processed_frame, detections, raw_frame = self._process_frame(frame)
                 
                 # Update statistics
                 stats['processed_frames'] += 1
@@ -320,7 +336,7 @@ class VideoProcessor:
                     self.on_detection_callback(detections, frame, self.frame_count)
                 
                 if self.on_frame_callback:
-                    self.on_frame_callback(processed_frame, self.frame_count)
+                    self.on_frame_callback(processed_frame, self.frame_count, raw_frame)
                 
                 # Display frame
                 if display:
@@ -373,7 +389,7 @@ class VideoProcessor:
         self.logger.error("❌ Could not access any camera")
         return None
     
-    def _process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
+    def _process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, List[Dict], np.ndarray]:
         """
         Process a single frame for object detection and tracking.
         
@@ -381,8 +397,11 @@ class VideoProcessor:
             frame: Input frame
             
         Returns:
-            Tuple of (processed_frame, detections_list)
+            Tuple of (processed_frame, detections_list, raw_frame)
         """
+        # Store raw frame for comparison
+        raw_frame = frame.copy()
+        
         # Run YOLOv8 inference
         results = self.model(frame, conf=self.confidence_threshold, verbose=False)
         
@@ -403,7 +422,7 @@ class VideoProcessor:
         # Add frame info
         annotated_frame = self._add_frame_info(annotated_frame)
         
-        return annotated_frame, detections
+        return annotated_frame, detections, raw_frame
     
     def _add_frame_info(self, frame: np.ndarray) -> np.ndarray:
         """Add frame information overlay to the frame."""
