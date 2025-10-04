@@ -1239,6 +1239,24 @@ function updateClassSelect(classSets, defaultSet) {
     if (defaultSet && classSets[defaultSet]) {
         select.value = classSets[defaultSet].join(',');
     }
+    
+    // Update filter status
+    updateClassFilterStatus();
+}
+
+// Update class filter status display
+function updateClassFilterStatus() {
+    const classSelect = document.getElementById('class-select');
+    const filterStatus = document.getElementById('class-filter-status');
+    const filterStatusText = document.getElementById('filter-status-text');
+    
+    if (classSelect.value) {
+        const selectedClasses = classSelect.value.split(',');
+        filterStatusText.textContent = `Only detecting: ${selectedClasses.join(', ')}`;
+        filterStatus.style.display = 'block';
+    } else {
+        filterStatus.style.display = 'none';
+    }
 }
 
 // ================================

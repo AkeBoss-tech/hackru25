@@ -82,7 +82,10 @@ class VideoProcessor:
         # Set target classes for filtering
         self.target_classes = target_classes
         if target_classes:
-            self.logger.info(f"Target classes set to: {target_classes}")
+            self.logger.info(f"🎯 CLASS FILTERING ENABLED: Only detecting {target_classes}")
+            self.logger.info(f"   (Model loads all 80 classes, but filtering happens during detection)")
+        else:
+            self.logger.info("📋 CLASS FILTERING DISABLED: Detecting all 80 classes")
         
         # Initialize model
         self._setup_model(device)
@@ -469,11 +472,16 @@ class VideoProcessor:
         
         # Filter detections by target classes if specified
         if self.target_classes and detections:
+            original_count = len(detections)
             filtered_detections = []
             for detection in detections:
                 if detection['class_name'] in self.target_classes:
                     filtered_detections.append(detection)
+                else:
+                    self.logger.info(f"Filtered out detection: {detection['class_name']} (not in target classes)")
             detections = filtered_detections
+            if original_count != len(detections):
+                self.logger.info(f"Class filtering: {original_count} -> {len(detections)} detections (target classes: {self.target_classes})")
         
         # Apply tracking if enabled
         if self.enable_tracking and self.tracker and detections:
