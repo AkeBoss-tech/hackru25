@@ -15,9 +15,11 @@ from ultralytics import YOLO
 try:
     from .detection_utils import DetectionUtils
     from .object_tracker import ObjectTracker
+    from .timeline_manager import TimelineManager
 except ImportError:
     from detection_utils import DetectionUtils
     from object_tracker import ObjectTracker
+    from timeline_manager import TimelineManager
 
 
 class VideoProcessor:
@@ -39,7 +41,8 @@ class VideoProcessor:
         confidence_threshold: float = 0.25,
         device: str = "auto",
         enable_tracking: bool = True,
-        tracking_method: str = "bytetrack"
+        tracking_method: str = "bytetrack",
+        enable_timeline: bool = True
     ):
         """
         Initialize the VideoProcessor.
@@ -50,6 +53,7 @@ class VideoProcessor:
             device: Device to run inference on ('auto', 'cpu', 'cuda', etc.)
             enable_tracking: Whether to enable object tracking
             tracking_method: Tracking method to use ('bytetrack', 'botsort')
+            enable_timeline: Whether to enable timeline event tracking
         """
         # Set model path - use provided path or find it dynamically
         if model_path is None:
@@ -67,6 +71,7 @@ class VideoProcessor:
         self.confidence_threshold = confidence_threshold
         self.enable_tracking = enable_tracking
         self.tracking_method = tracking_method
+        self.enable_timeline = enable_timeline
         
         # Setup logging
         self.logger = logging.getLogger(__name__)
@@ -84,18 +89,27 @@ class VideoProcessor:
         # Initialize detection utils
         self.detection_utils = DetectionUtils()
         
+        # Initialize timeline manager
+        if self.enable_timeline:
+            self.timeline_manager = TimelineManager()
+        else:
+            self.timeline_manager = None
+        
         # Processing state
         self.is_processing = False
         self.frame_count = 0
         self.start_time = None
+        self.current_video_source = None
         
         # Callbacks
         self.on_detection_callback: Optional[Callable] = None
         self.on_frame_callback: Optional[Callable] = None
+        self.on_timeline_event_callback: Optional[Callable] = None
         
         self.logger.info(f"VideoProcessor initialized with model: {model_path}")
         self.logger.info(f"Confidence threshold: {confidence_threshold}")
         self.logger.info(f"Tracking enabled: {enable_tracking}")
+        self.logger.info(f"Timeline enabled: {enable_timeline}")
         
     def _setup_model(self, device: str):
         """Setup YOLOv8 model with proper device configuration."""
@@ -146,6 +160,16 @@ class VideoProcessor:
         self.on_frame_callback = callback
         self.logger.info("Frame callback set")
     
+    def set_timeline_event_callback(self, callback: Callable):
+        """
+        Set callback function to be called when timeline events are created.
+        
+        Args:
+            callback: Function that receives (timeline_event)
+        """
+        self.on_timeline_event_callback = callback
+        self.logger.info("Timeline event callback set")
+    
     def process_video_file(
         self,
         video_path: Union[str, Path],
@@ -170,6 +194,9 @@ class VideoProcessor:
             raise FileNotFoundError(f"Video file not found: {video_path}")
         
         self.logger.info(f"Processing video file: {video_path}")
+        
+        # Set video source for timeline
+        self.current_video_source = f"video:{video_path}"
         
         # Open video
         cap = cv2.VideoCapture(str(video_path))
@@ -213,6 +240,17 @@ class VideoProcessor:
                 
                 # Process frame
                 processed_frame, detections, raw_frame = self._process_frame(frame)
+                
+                # Process timeline events if enabled
+                if self.enable_timeline and self.timeline_manager and self.current_video_source:
+                    timeline_events = self.timeline_manager.process_frame_detections(
+                        detections, frame, self.frame_count, self.current_video_source
+                    )
+                    
+                    # Call timeline event callbacks
+                    for event in timeline_events:
+                        if self.on_timeline_event_callback:
+                            self.on_timeline_event_callback(event)
                 
                 # Update statistics
                 stats['processed_frames'] += 1
@@ -284,6 +322,9 @@ class VideoProcessor:
         """
         self.logger.info(f"Starting camera stream processing (camera {camera_index})")
         
+        # Set video source for timeline
+        self.current_video_source = f"camera:{camera_index}"
+        
         # Try to open camera
         cap = self._open_camera(camera_index)
         if cap is None:
@@ -318,6 +359,17 @@ class VideoProcessor:
                 
                 # Process frame
                 processed_frame, detections, raw_frame = self._process_frame(frame)
+                
+                # Process timeline events if enabled
+                if self.enable_timeline and self.timeline_manager and self.current_video_source:
+                    timeline_events = self.timeline_manager.process_frame_detections(
+                        detections, frame, self.frame_count, self.current_video_source
+                    )
+                    
+                    # Call timeline event callbacks
+                    for event in timeline_events:
+                        if self.on_timeline_event_callback:
+                            self.on_timeline_event_callback(event)
                 
                 # Update statistics
                 stats['processed_frames'] += 1
@@ -498,5 +550,10 @@ class VideoProcessor:
             'classes': list(self.model.names.values()),
             'confidence_threshold': self.confidence_threshold,
             'tracking_enabled': self.enable_tracking,
-            'tracking_method': self.tracking_method if self.enable_tracking else None
+            'tracking_method': self.tracking_method if self.enable_tracking else None,
+            'timeline_enabled': self.enable_timeline
         }
+    
+    def get_timeline_manager(self) -> Optional[TimelineManager]:
+        """Get the timeline manager instance."""
+        return self.timeline_manager

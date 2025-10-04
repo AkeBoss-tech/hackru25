@@ -11,10 +11,29 @@ let recentDetections = [];
 let lastFrameUpdate = 0;
 let lastDetectionUpdate = 0;
 let detectionCounts = {};
+let timelineEvents = [];
+let timelineStats = {
+    totalEvents: 0,
+    newObjects: 0,
+    snapshots: 0
+};
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
+    
+    // Add keyboard support for fullscreen
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.fullscreenElement) {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
+        }
+    });
 });
 
 function initializeApp() {
@@ -27,6 +46,13 @@ function initializeApp() {
     // Load initial data
     loadCameras();
     loadConfig();
+    loadTimelineEvents();
+    
+    // Auto-start processing after a short delay
+    setTimeout(() => {
+        console.log('Auto-starting video processing...');
+        startProcessing();
+    }, 2000);
     
     // Update UI
     updateUI();
@@ -49,10 +75,15 @@ function initializeSocket() {
         // Close processing modal if it's open
         closeProcessingModal();
         
-        // Throttle frame updates to prevent flashing
-        if (Date.now() - lastFrameUpdate > 100) { // Update max every 100ms (10 FPS)
+        // Throttle frame updates to prevent flashing (less aggressive)
+        if (Date.now() - lastFrameUpdate > 50) { // Update max every 50ms (20 FPS)
             updateVideoFeeds(data);
             lastFrameUpdate = Date.now();
+        }
+        
+        // Update timeline statistics if available
+        if (data.timeline_stats) {
+            updateStatistics(data.timeline_stats);
         }
     });
     
@@ -66,6 +97,10 @@ function initializeSocket() {
     
     socket.on('stats_update', function(data) {
         updateStatistics(data);
+    });
+    
+    socket.on('timeline_event', function(eventData) {
+        addTimelineEvent(eventData);
     });
     
     socket.on('processing_error', function(data) {
@@ -90,6 +125,7 @@ function setupEventListeners() {
     confidenceSlider.addEventListener('input', function() {
         document.getElementById('confidence-value').textContent = this.value;
     });
+    
     
     // Video upload
     const videoUpload = document.getElementById('video-upload');
@@ -194,6 +230,31 @@ function closeProcessingModal() {
         const modal = bootstrap.Modal.getInstance(processingModal);
         if (modal) {
             modal.hide();
+        }
+    }
+}
+
+function toggleFullscreen(elementId) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    if (!document.fullscreenElement) {
+        // Enter fullscreen
+        if (element.requestFullscreen) {
+            element.requestFullscreen();
+        } else if (element.webkitRequestFullscreen) {
+            element.webkitRequestFullscreen();
+        } else if (element.msRequestFullscreen) {
+            element.msRequestFullscreen();
+        }
+    } else {
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
         }
     }
 }
@@ -303,8 +364,8 @@ function updateVideoFeeds(data) {
         processedVideoFeed.src = 'data:image/jpeg;base64,' + data.processed_frame;
     }
     
-    // Update frame counter
-    if (data.frame_number) {
+    // Update frame counter (less frequently)
+    if (data.frame_number && data.frame_number % 10 === 0) {
         document.getElementById('current-frame').textContent = data.frame_number;
     }
 }
@@ -390,6 +451,14 @@ function updateStatistics(stats) {
     document.getElementById('fps').textContent = (stats.fps || 0).toFixed(1);
     document.getElementById('active-tracks').textContent = stats.active_tracks || 0;
     document.getElementById('processing-time').textContent = formatTime(stats.processing_time || 0);
+    
+    // Update timeline statistics
+    if (stats.people_count !== undefined) {
+        document.getElementById('people-count').textContent = stats.people_count || 0;
+    }
+    if (stats.cars_count !== undefined) {
+        document.getElementById('vehicles-count').textContent = stats.cars_count || 0;
+    }
 }
 
 function updateConnectionStatus(connected) {
@@ -482,3 +551,346 @@ setInterval(() => {
         socket.connect();
     }
 }, 10000);
+
+// Timeline Functions
+async function loadTimelineEvents() {
+    try {
+        const response = await fetch('/api/timeline/events?limit=25');
+        const data = await response.json();
+        
+        if (data.events) {
+            timelineEvents = data.events;
+            renderTimelineEvents();
+        }
+        
+        // Load timeline statistics
+        await loadTimelineStatistics();
+    } catch (error) {
+        console.error('Error loading timeline events:', error);
+    }
+}
+
+async function loadTimelineStatistics() {
+    try {
+        const response = await fetch('/api/timeline/statistics');
+        const data = await response.json();
+        
+        if (data) {
+            timelineStats = data;
+            updateTimelineStats();
+        }
+    } catch (error) {
+        console.error('Error loading timeline statistics:', error);
+    }
+}
+
+function addTimelineEvent(eventData) {
+    // Add to beginning of array (newest first)
+    timelineEvents.unshift(eventData);
+    
+    // Keep only the most recent events (limit by UI setting)
+    const limit = parseInt(document.getElementById('timeline-limit').value) || 25;
+    if (timelineEvents.length > limit) {
+        timelineEvents = timelineEvents.slice(0, limit);
+    }
+    
+    // Update timeline stats
+    timelineStats.totalEvents++;
+    timelineStats.newObjects++;
+    if (eventData.snapshot_path) {
+        timelineStats.snapshots++;
+    }
+    
+    // Render the timeline
+    renderTimelineEvents();
+    updateTimelineStats();
+}
+
+function renderTimelineEvents() {
+    const container = document.getElementById('timeline-events');
+    
+    if (timelineEvents.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted">
+                <i class="fas fa-history fa-2x mb-2"></i>
+                <p>No timeline events yet</p>
+                <small>Start processing to see new object detection events</small>
+            </div>
+        `;
+        return;
+    }
+    
+    const eventsHtml = timelineEvents.map(event => createTimelineEventHtml(event)).join('');
+    container.innerHTML = eventsHtml;
+}
+
+function createTimelineEventHtml(event) {
+    const timestamp = new Date(event.timestamp).toLocaleString();
+    const source = event.video_source.replace('camera:', 'Camera ').replace('video:', 'Video: ');
+    
+    let objectsHtml = '';
+    if (event.objects && event.objects.length > 0) {
+        objectsHtml = event.objects.map(obj => 
+            `<span class="timeline-event-object">
+                ${obj.class_name} <span class="confidence">(${(obj.confidence * 100).toFixed(0)}%)</span>
+            </span>`
+        ).join('');
+    }
+    
+    let snapshotHtml = '';
+    if (event.snapshot_path) {
+        snapshotHtml = `
+            <div class="timeline-event-snapshot">
+                <div class="snapshot-toggle mb-2">
+                    <button class="btn btn-sm btn-outline-primary me-2" onclick="toggleSnapshot('${event.event_id}', true)">
+                        <i class="fas fa-eye"></i> Annotated
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleSnapshot('${event.event_id}', false)">
+                        <i class="fas fa-image"></i> Raw
+                    </button>
+                </div>
+                <img id="snapshot-${event.event_id}" 
+                     src="/api/timeline/snapshots/${encodeURIComponent(event.snapshot_path)}" 
+                     alt="Event Snapshot" 
+                     onclick="showSnapshotModal('${event.snapshot_path}', '${event.event_id}')">
+            </div>
+        `;
+    }
+    
+    return `
+        <div class="timeline-event new" data-event-id="${event.event_id}">
+            <div class="timeline-event-header">
+                <span class="timeline-event-time">${timestamp}</span>
+                <span class="timeline-event-id">${event.event_id}</span>
+            </div>
+            <div class="timeline-event-source">${source}</div>
+            <div class="timeline-event-objects">${objectsHtml}</div>
+            ${snapshotHtml}
+            <div class="timeline-event-meta">
+                <span class="timeline-event-frame">Frame: ${event.frame_number}</span>
+                <span class="timeline-event-confidence">
+                    Avg Confidence: ${(event.confidence_scores.reduce((a, b) => a + b, 0) / event.confidence_scores.length * 100).toFixed(0)}%
+                </span>
+            </div>
+        </div>
+    `;
+}
+
+function updateTimelineStats() {
+    document.getElementById('timeline-total-events').textContent = timelineStats.total_events || 0;
+    document.getElementById('timeline-new-objects').textContent = timelineStats.new_object_events || 0;
+    document.getElementById('timeline-snapshots').textContent = timelineStats.snapshots_captured || 0;
+}
+
+function refreshTimeline() {
+    loadTimelineEvents();
+}
+
+function filterTimeline() {
+    const filter = document.getElementById('timeline-filter').value;
+    const limit = parseInt(document.getElementById('timeline-limit').value) || 25;
+    
+    // Reload with filter
+    loadTimelineEventsWithFilter(filter, limit);
+}
+
+async function loadTimelineEventsWithFilter(filter, limit) {
+    try {
+        let url = `/api/timeline/events?limit=${limit}`;
+        if (filter) {
+            url += `&video_source=${encodeURIComponent(filter)}`;
+        }
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.events) {
+            timelineEvents = data.events;
+            renderTimelineEvents();
+        }
+    } catch (error) {
+        console.error('Error loading filtered timeline events:', error);
+    }
+}
+
+async function clearTimeline() {
+    if (!confirm('Are you sure you want to clear all timeline events?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/timeline/clear', {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            timelineEvents = [];
+            timelineStats = {
+                totalEvents: 0,
+                newObjects: 0,
+                snapshots: 0
+            };
+            renderTimelineEvents();
+            updateTimelineStats();
+            showSuccess('Timeline events cleared successfully');
+        } else {
+            throw new Error('Failed to clear timeline events');
+        }
+    } catch (error) {
+        console.error('Error clearing timeline events:', error);
+        showError('Failed to clear timeline events');
+    }
+}
+
+function toggleSnapshot(eventId, showAnnotated) {
+    const img = document.getElementById(`snapshot-${eventId}`);
+    const event = timelineEvents.find(e => e.event_id === eventId);
+    
+    if (!event || !event.snapshot_path) return;
+    
+    let newSrc;
+    if (showAnnotated) {
+        newSrc = `/api/timeline/snapshots/${encodeURIComponent(event.snapshot_path)}`;
+    } else {
+        newSrc = `/api/timeline/snapshots/${encodeURIComponent(event.snapshot_path)}/raw`;
+    }
+    
+    img.src = newSrc;
+    
+    // Update button states
+    const buttons = img.parentElement.querySelectorAll('.btn');
+    buttons.forEach(btn => {
+        btn.classList.remove('btn-primary', 'btn-secondary');
+        btn.classList.add('btn-outline-primary', 'btn-outline-secondary');
+    });
+    
+    if (showAnnotated) {
+        buttons[0].classList.remove('btn-outline-primary');
+        buttons[0].classList.add('btn-primary');
+        buttons[1].classList.remove('btn-outline-secondary');
+        buttons[1].classList.add('btn-secondary');
+    } else {
+        buttons[0].classList.remove('btn-outline-primary');
+        buttons[0].classList.add('btn-secondary');
+        buttons[1].classList.remove('btn-outline-secondary');
+        buttons[1].classList.add('btn-primary');
+    }
+}
+
+function showSnapshotModal(snapshotPath, eventId) {
+    const event = timelineEvents.find(e => e.event_id === eventId);
+    
+    // Create modal HTML with toggle buttons
+    const modalHtml = `
+        <div class="modal fade timeline-modal" id="snapshotModal" tabindex="-1">
+            <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-camera"></i> Event Snapshot
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                        <div class="mb-3">
+                            <button class="btn btn-sm btn-primary me-2" onclick="toggleModalSnapshot(true)">
+                                <i class="fas fa-eye"></i> Annotated
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleModalSnapshot(false)">
+                                <i class="fas fa-image"></i> Raw
+                            </button>
+                        </div>
+                        <img id="modalSnapshot" 
+                             src="/api/timeline/snapshots/${encodeURIComponent(snapshotPath)}" 
+                             alt="Event Snapshot" 
+                             class="img-fluid">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if present
+    const existingModal = document.getElementById('snapshotModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add new modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Store the snapshot path and event for the modal
+    window.modalSnapshotPath = snapshotPath;
+    window.modalEvent = event;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('snapshotModal'));
+    modal.show();
+    
+    // Remove modal from DOM when hidden
+    document.getElementById('snapshotModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+        window.modalSnapshotPath = null;
+        window.modalEvent = null;
+    });
+}
+
+function toggleModalSnapshot(showAnnotated) {
+    const img = document.getElementById('modalSnapshot');
+    const buttons = document.querySelectorAll('#snapshotModal .btn');
+    
+    if (!window.modalSnapshotPath) return;
+    
+    let newSrc;
+    if (showAnnotated) {
+        newSrc = `/api/timeline/snapshots/${encodeURIComponent(window.modalSnapshotPath)}`;
+    } else {
+        newSrc = `/api/timeline/snapshots/${encodeURIComponent(window.modalSnapshotPath)}/raw`;
+    }
+    
+    img.src = newSrc;
+    
+    // Update button states
+    buttons.forEach((btn, index) => {
+        if (index < 2) { // Only the first two buttons are the toggle buttons
+            btn.classList.remove('btn-primary', 'btn-secondary');
+            btn.classList.add('btn-outline-primary', 'btn-outline-secondary');
+        }
+    });
+    
+    if (showAnnotated) {
+        buttons[0].classList.remove('btn-outline-primary');
+        buttons[0].classList.add('btn-primary');
+        buttons[1].classList.remove('btn-outline-secondary');
+        buttons[1].classList.add('btn-secondary');
+    } else {
+        buttons[0].classList.remove('btn-outline-primary');
+        buttons[0].classList.add('btn-secondary');
+        buttons[1].classList.remove('btn-outline-secondary');
+        buttons[1].classList.add('btn-primary');
+    }
+}
+
+
+function showSuccess(message) {
+    // Create a simple toast notification
+    const toast = document.createElement('div');
+    toast.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    toast.innerHTML = `
+        <i class="fas fa-check-circle"></i> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.remove();
+        }
+    }, 3000);
+}

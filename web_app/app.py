@@ -88,6 +88,7 @@ class WebVideoProcessor:
             # Set up callbacks
             self.processor.set_detection_callback(self._on_detection)
             self.processor.set_frame_callback(self._on_frame)
+            self.processor.set_timeline_event_callback(self._on_timeline_event)
             
             logger.info("Video processor initialized successfully")
             return True
@@ -140,17 +141,33 @@ class WebVideoProcessor:
                 _, raw_buffer = cv2.imencode('.jpg', raw_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 raw_base64 = base64.b64encode(raw_buffer).decode('utf-8')
             
+            # Get timeline statistics
+            timeline_stats = {}
+            if self.processor and self.processor.get_timeline_manager():
+                timeline_stats = self.processor.get_timeline_manager().get_statistics()
+            
             # Emit frame data to web clients
             frame_data = {
                 'frame_number': int(frame_number),
                 'processed_frame': processed_base64,
                 'raw_frame': raw_base64,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'timeline_stats': timeline_stats
             }
             socketio.emit('frame_update', frame_data)
             
         except Exception as e:
             logger.error(f"Error encoding frame: {e}")
+    
+    def _on_timeline_event(self, timeline_event):
+        """Callback for when timeline events are created."""
+        try:
+            # Emit timeline event to web clients
+            event_data = timeline_event.to_dict()
+            socketio.emit('timeline_event', event_data)
+            logger.info(f"Timeline event emitted: {event_data['event_id']}")
+        except Exception as e:
+            logger.error(f"Error handling timeline event: {e}")
     
     def start_camera_processing(self, camera_index=0):
         """Start processing camera stream."""
@@ -402,6 +419,138 @@ def get_config():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/timeline/events')
+def get_timeline_events():
+    """Get timeline events."""
+    try:
+        if not web_processor.processor or not web_processor.processor.get_timeline_manager():
+            return jsonify({'events': [], 'message': 'Timeline not available'})
+        
+        timeline_manager = web_processor.processor.get_timeline_manager()
+        
+        # Get query parameters
+        limit = request.args.get('limit', 50, type=int)
+        video_source = request.args.get('video_source', type=str)
+        
+        events = timeline_manager.get_events(
+            limit=limit,
+            video_source=video_source
+        )
+        
+        return jsonify({
+            'events': events,
+            'count': len(events)
+        })
+    except Exception as e:
+        logger.error(f"Error getting timeline events: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/events/<event_id>')
+def get_timeline_event(event_id):
+    """Get a specific timeline event by ID."""
+    try:
+        if not web_processor.processor or not web_processor.processor.get_timeline_manager():
+            return jsonify({'error': 'Timeline not available'}), 404
+        
+        timeline_manager = web_processor.processor.get_timeline_manager()
+        event = timeline_manager.get_event_by_id(event_id)
+        
+        if not event:
+            return jsonify({'error': 'Event not found'}), 404
+        
+        return jsonify(event)
+    except Exception as e:
+        logger.error(f"Error getting timeline event {event_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/snapshots/<path:snapshot_path>')
+def get_timeline_snapshot(snapshot_path):
+    """Get a timeline snapshot image."""
+    try:
+        if not web_processor.processor or not web_processor.processor.get_timeline_manager():
+            return jsonify({'error': 'Timeline not available'}), 404
+        
+        timeline_manager = web_processor.processor.get_timeline_manager()
+        image_data = timeline_manager.get_snapshot(snapshot_path)
+        
+        if not image_data:
+            return jsonify({'error': 'Snapshot not found'}), 404
+        
+        return Response(
+            image_data,
+            mimetype='image/jpeg',
+            headers={'Content-Disposition': f'attachment; filename={os.path.basename(snapshot_path)}'}
+        )
+    except Exception as e:
+        logger.error(f"Error getting snapshot {snapshot_path}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/snapshots/<path:snapshot_path>/raw')
+def get_timeline_raw_snapshot(snapshot_path):
+    """Get a raw timeline snapshot image (without annotations)."""
+    try:
+        if not web_processor.processor or not web_processor.processor.get_timeline_manager():
+            return jsonify({'error': 'Timeline not available'}), 404
+        
+        timeline_manager = web_processor.processor.get_timeline_manager()
+        
+        # Get the raw snapshot path
+        raw_path = timeline_manager.get_raw_snapshot_path(snapshot_path)
+        if not raw_path:
+            return jsonify({'error': 'Raw snapshot not found'}), 404
+        
+        image_data = timeline_manager.get_snapshot(raw_path)
+        
+        if not image_data:
+            return jsonify({'error': 'Raw snapshot not found'}), 404
+        
+        return Response(
+            image_data,
+            mimetype='image/jpeg',
+            headers={'Content-Disposition': f'attachment; filename={os.path.basename(raw_path)}'}
+        )
+    except Exception as e:
+        logger.error(f"Error getting raw snapshot {snapshot_path}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/statistics')
+def get_timeline_statistics():
+    """Get timeline statistics."""
+    try:
+        if not web_processor.processor or not web_processor.processor.get_timeline_manager():
+            return jsonify({'error': 'Timeline not available'}), 404
+        
+        timeline_manager = web_processor.processor.get_timeline_manager()
+        stats = timeline_manager.get_statistics()
+        
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"Error getting timeline statistics: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/clear', methods=['POST'])
+def clear_timeline_events():
+    """Clear all timeline events."""
+    try:
+        if not web_processor.processor or not web_processor.processor.get_timeline_manager():
+            return jsonify({'error': 'Timeline not available'}), 404
+        
+        timeline_manager = web_processor.processor.get_timeline_manager()
+        timeline_manager.clear_events()
+        
+        return jsonify({'status': 'cleared', 'message': 'All timeline events cleared'})
+    except Exception as e:
+        logger.error(f"Error clearing timeline events: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection."""
@@ -429,4 +578,4 @@ if __name__ == '__main__':
         sys.exit(1)
     
     # Start Flask-SocketIO app
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5002, allow_unsafe_werkzeug=True)

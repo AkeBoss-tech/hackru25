@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple startup script for the YOLOv8 Video Processing Web Application.
-Automatically handles port conflicts by killing existing processes.
+Uses basic Flask without SocketIO for testing.
 """
 
 import os
@@ -35,13 +35,7 @@ def kill_process_on_port(port):
         else:
             print(f"✅ Port {port} is available")
     except FileNotFoundError:
-        # lsof not available (Windows), try netstat
-        try:
-            result = subprocess.run(['netstat', '-ano'], capture_output=True, text=True)
-            if f':{port}' in result.stdout:
-                print(f"⚠️  Port {port} may be in use, but lsof not available to kill processes")
-        except FileNotFoundError:
-            print(f"⚠️  Cannot check port {port} status (lsof/netstat not available)")
+        print(f"⚠️  Cannot check port {port} status (lsof not available)")
 
 def find_available_port(start_port=5001, max_attempts=10):
     """Find an available port starting from start_port."""
@@ -54,11 +48,11 @@ def find_available_port(start_port=5001, max_attempts=10):
             continue
     return start_port  # Fallback to original port
 
-# Import and run the Flask app
-from app import app, socketio
+# Import and run the Flask app (without SocketIO)
+from app import app
 
 if __name__ == '__main__':
-    print("🚀 Starting YOLOv8 Video Processing Web Application...")
+    print("🚀 Starting YOLOv8 Video Processing Web Application (Simple Mode)...")
     print("🔧 Checking and cleaning up port conflicts...")
     
     # Kill any existing processes on port 5001
@@ -72,10 +66,11 @@ if __name__ == '__main__':
     
     print(f"📱 Open your browser and go to: http://localhost:{port}")
     print("⏹️  Press Ctrl+C to stop the server")
+    print("⚠️  Note: This is simple mode without real-time features")
     print("-" * 60)
     
     try:
-        socketio.run(app, debug=True, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
+        app.run(debug=True, host='0.0.0.0', port=port)
     except KeyboardInterrupt:
         print("\n👋 Server stopped by user")
     except Exception as e:
