@@ -1311,13 +1311,15 @@ function handleNewNotification(notificationData) {
     // Update display
     updateNotificationsDisplay();
     
-    // Show popup for high/critical notifications
-    if (notificationData.importance === 'high' || notificationData.importance === 'critical') {
-        showNotificationPopup(notificationData);
-    }
+           // Show popup only for high/critical enter/exit notifications
+           if ((notificationData.importance === 'high' || notificationData.importance === 'critical') && 
+               (notificationData.event_data?.event_type === 'entered' || notificationData.event_data?.event_type === 'exited')) {
+               showNotificationPopup(notificationData);
+           }
     
-    // Play sound for important notifications
-    if (soundEnabled && (notificationData.importance === 'high' || notificationData.importance === 'critical')) {
+    // Play sound for important enter/exit notifications
+    if (soundEnabled && (notificationData.importance === 'high' || notificationData.importance === 'critical') &&
+        (notificationData.event_data?.event_type === 'entered' || notificationData.event_data?.event_type === 'exited')) {
         playNotificationSound(notificationData.importance);
     }
     
@@ -1343,17 +1345,27 @@ function updateNotificationsDisplay() {
         const timeAgo = getTimeAgo(new Date(notif.timestamp));
         const importanceClass = notif.importance;
         
-        return `
-            <div class="notification-item ${importanceClass}" onclick="viewNotificationDetails('${notif.id}')">
-                <div class="notification-importance-badge ${importanceClass}">
-                    ${notif.importance.toUpperCase()}
-                </div>
-                <div class="notification-item-header">
-                    <div class="notification-item-title">${notif.title}</div>
-                    <div class="notification-item-time">${timeAgo}</div>
-                </div>
-                <div class="notification-item-message">${notif.message}</div>
+               const eventType = notif.event_data?.event_type || 'detected';
+               const eventTypeIcon = eventType === 'entered' ? '🔽' : eventType === 'exited' ? '🔼' : '📍';
+               
+               return `
+                   <div class="notification-item ${importanceClass}" onclick="viewNotificationDetails('${notif.id}')">
+                       <div class="notification-importance-badge ${importanceClass}">
+                           ${notif.importance.toUpperCase()}
+                       </div>
+                       <div class="notification-item-header">
+                           <div class="notification-item-title">
+                               ${eventTypeIcon} ${notif.title}
+                           </div>
+                           <div class="notification-item-time">${timeAgo}</div>
+                       </div>
+                       <div class="notification-item-message">${notif.message}</div>
                 <div class="notification-item-actions">
+                    ${notif.event_data?.snapshot_path ? 
+                        `<button class="btn btn-sm btn-outline-info" onclick="event.stopPropagation(); viewNotificationImage('${notif.id}')">
+                            <i class="fas fa-image"></i> View Image
+                        </button>` : ''
+                    }
                     <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); viewEventDetails('${notif.event_data?.event_id}')">
                         <i class="fas fa-eye"></i> View Event
                     </button>
@@ -1551,9 +1563,59 @@ function viewNotificationDetails(notificationId) {
         Importance: ${notification.importance}
         Time: ${new Date(notification.timestamp).toLocaleString()}
         Event ID: ${notification.event_data?.event_id || 'N/A'}
+        Event Type: ${notification.event_data?.event_type || 'detected'}
     `;
     
     alert(details);
+}
+
+// View notification image
+function viewNotificationImage(notificationId) {
+    const notification = notifications.find(n => n.id === notificationId);
+    if (!notification || !notification.event_data?.snapshot_path) {
+        showToast('No image available for this notification', 'warning');
+        return;
+    }
+    
+    // Create a modal to display the image
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">${notification.title}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img src="/api/snapshots/${notification.event_data.snapshot_path}" 
+                         class="img-fluid" 
+                         alt="Notification snapshot"
+                         style="max-height: 70vh;">
+                    <div class="mt-3">
+                        <p><strong>Message:</strong> ${notification.message}</p>
+                        <p><strong>Time:</strong> ${new Date(notification.timestamp).toLocaleString()}</p>
+                        <p><strong>Event Type:</strong> ${notification.event_data.event_type || 'detected'}</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="viewEventDetails('${notification.event_data.event_id}')">View Full Event</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Show the modal using Bootstrap
+    const bootstrapModal = new bootstrap.Modal(modal);
+    bootstrapModal.show();
+    
+    // Remove modal from DOM when hidden
+    modal.addEventListener('hidden.bs.modal', () => {
+        document.body.removeChild(modal);
+    });
 }
 
 // View event details (same as timeline event viewer)

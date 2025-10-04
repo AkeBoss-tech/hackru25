@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Union, Optional, Dict, List, Tuple, Callable
 import time
 import logging
+from datetime import datetime
 from ultralytics import YOLO
 
 try:
@@ -95,6 +96,10 @@ class VideoProcessor:
             self.tracker = ObjectTracker(method=tracking_method)
         else:
             self.tracker = None
+            
+        # Initialize enter/exit tracking
+        from .object_enter_exit_tracker import ObjectEnterExitTracker
+        self.enter_exit_tracker = ObjectEnterExitTracker()
             
         # Initialize detection utils
         self.detection_utils = DetectionUtils()
@@ -487,12 +492,31 @@ class VideoProcessor:
         if self.enable_tracking and self.tracker and detections:
             detections = self.tracker.update(detections, frame)
         
+        # Check for enter/exit events
+        enter_exit_events = []
+        if self.enable_tracking and detections:
+            enter_exit_events = self.enter_exit_tracker.update(detections)
+            
+            # Process enter/exit events
+            for event in enter_exit_events:
+                # Update event with current context
+                event['video_source'] = self.current_video_source or 'camera:0'
+                event['frame_number'] = self.frame_count
+                
+                # Capture snapshot for enter/exit events
+                if event['event_type'] in ['entered', 'exited']:
+                    snapshot_path = self._capture_snapshot_for_event(frame, event)
+                    event['snapshot_path'] = snapshot_path
+                
+                # Send enter/exit events to timeline and notifications
+                self._handle_enter_exit_event(event)
+        
         # Draw annotations - use our own drawing to respect filtering
         annotated_frame = self._draw_filtered_detections(frame, detections)
         
-        # Add tracking info if enabled
-        if self.enable_tracking and self.tracker:
-            annotated_frame = self.tracker.draw_tracks(annotated_frame)
+        # Skip tracking visualization for minimal design
+        # if self.enable_tracking and self.tracker:
+        #     annotated_frame = self.tracker.draw_tracks(annotated_frame)
         
         # Add frame info
         annotated_frame = self._add_frame_info(annotated_frame)
@@ -505,14 +529,14 @@ class VideoProcessor:
     
     def _draw_filtered_detections(self, frame: np.ndarray, detections: List[Dict]) -> np.ndarray:
         """
-        Draw only the filtered detections on the frame.
+        Draw ultra-minimal detections with clean styling.
         
         Args:
             frame: Input frame
             detections: List of filtered detections to draw
             
         Returns:
-            Annotated frame with only filtered detections
+            Annotated frame with minimal detections
         """
         annotated_frame = frame.copy()
         
@@ -523,7 +547,6 @@ class VideoProcessor:
             # Get detection info
             bbox = detection.get('bbox', [])
             class_name = detection.get('class_name', 'unknown')
-            confidence = detection.get('confidence', 0.0)
             track_id = detection.get('track_id')
             
             if len(bbox) != 4:
@@ -531,31 +554,40 @@ class VideoProcessor:
                 
             x1, y1, x2, y2 = map(int, bbox)
             
-            # Choose color based on class (similar to YOLOv8)
-            color = self._get_class_color(class_name)
+            # Get clean color
+            color = self._get_clean_class_color(class_name)
             
-            # Draw bounding box
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+            # Draw ultra-thin, clean bounding box
+            thickness = 2
+            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, thickness)
             
-            # Create label
-            label = f"{class_name}: {confidence:.2f}"
+            # Only show track ID if available, no class name clutter
             if track_id is not None:
-                label += f" ID:{track_id}"
-            
-            # Draw label background
-            label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
-            cv2.rectangle(annotated_frame, (x1, y1 - label_size[1] - 10), 
-                         (x1 + label_size[0], y1), color, -1)
-            
-            # Draw label text
-            cv2.putText(annotated_frame, label, (x1, y1 - 5), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                label = f"#{track_id}"
+                
+                # Use better font with anti-aliasing
+                font = cv2.FONT_HERSHEY_DUPLEX
+                font_scale = 0.6
+                font_thickness = 1
+                
+                # Get text size
+                (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, font_thickness)
+                
+                # Position label inside the box, top-left corner
+                label_x = x1 + 5
+                label_y = y1 + text_height + 5
+                
+                # Draw text with outline for better visibility
+                cv2.putText(annotated_frame, label, (label_x, label_y), 
+                           font, font_scale, (0, 0, 0), font_thickness + 1)  # Black outline
+                cv2.putText(annotated_frame, label, (label_x, label_y), 
+                           font, font_scale, (255, 255, 255), font_thickness)  # White text
         
         return annotated_frame
     
-    def _get_class_color(self, class_name: str) -> tuple:
+    def _get_clean_class_color(self, class_name: str) -> tuple:
         """
-        Get a consistent color for a class name.
+        Get clean, vibrant colors for different object types.
         
         Args:
             class_name: Name of the class
@@ -563,71 +595,147 @@ class VideoProcessor:
         Returns:
             BGR color tuple
         """
-        # Create a hash-based color for consistency
-        hash_val = hash(class_name) % 16777216  # 24-bit color
-        r = (hash_val >> 16) & 255
-        g = (hash_val >> 8) & 255
-        b = hash_val & 255
+        # Clean, vibrant color palette
+        color_map = {
+            'person': (0, 255, 0),          # Bright green
+            'car': (255, 0, 0),             # Bright blue  
+            'truck': (255, 165, 0),         # Orange
+            'bus': (255, 0, 255),           # Magenta
+            'motorcycle': (0, 255, 255),    # Cyan
+            'bicycle': (255, 255, 0),       # Yellow
+            'dog': (255, 192, 203),         # Pink
+            'cat': (144, 238, 144),         # Light green
+            'bird': (173, 216, 230),        # Light blue
+        }
         
-        # Ensure minimum brightness
-        r = max(r, 50)
-        g = max(g, 50)
-        b = max(b, 50)
+        # Get color from map or use clean white fallback
+        color = color_map.get(class_name.lower(), (255, 255, 255))  # White fallback
         
-        return (int(b), int(g), int(r))  # BGR format for OpenCV
+        return color  # Already in BGR format
+    
+    def _get_modern_class_color(self, class_name: str) -> tuple:
+        """
+        Get a modern, clean color for a class name (legacy method).
+        
+        Args:
+            class_name: Name of the class
+            
+        Returns:
+            BGR color tuple
+        """
+        return self._get_clean_class_color(class_name)
+    
+    def _get_class_color(self, class_name: str) -> tuple:
+        """
+        Get a consistent color for a class name (legacy method).
+        
+        Args:
+            class_name: Name of the class
+            
+        Returns:
+            BGR color tuple
+        """
+        return self._get_modern_class_color(class_name)
+    
+    def _capture_snapshot_for_event(self, frame: np.ndarray, event: Dict) -> Optional[str]:
+        """
+        Capture a snapshot for enter/exit events.
+        
+        Args:
+            frame: Current frame
+            event: Enter/exit event data
+            
+        Returns:
+            Path to saved snapshot or None if failed
+        """
+        try:
+            if not self.timeline_manager:
+                return None
+                
+            event_id = event.get('event_id', 'unknown')
+            snapshot_path = self.timeline_manager._capture_snapshot(frame, event_id, event['objects'][0])
+            return snapshot_path
+        except Exception as e:
+            self.logger.error(f"Failed to capture snapshot for event {event.get('event_id', 'unknown')}: {e}")
+            return None
+    
+    def _handle_enter_exit_event(self, event: Dict):
+        """
+        Handle enter/exit events by sending them to timeline and notifications.
+        
+        Args:
+            event: Enter/exit event data
+        """
+        try:
+            # Send to timeline manager if enabled
+            if self.timeline_manager:
+                # Create a TimelineEvent for the enter/exit
+                from .timeline_manager import TimelineEvent
+                timeline_event = TimelineEvent(
+                    event_id=event['event_id'],
+                    timestamp=datetime.now(),
+                    video_source=event['video_source'],
+                    objects=event['objects'],
+                    snapshot_path=event.get('snapshot_path'),
+                    frame_number=event['frame_number'],
+                    confidence_scores=event['confidence_scores']
+                )
+                
+                # Add to timeline
+                self.timeline_manager.events.append(timeline_event)
+                self.timeline_manager.events_by_id[event['event_id']] = timeline_event
+                
+                # Update stats
+                self.timeline_manager.stats['total_events'] += 1
+                self.timeline_manager.stats['last_event_time'] = timeline_event.timestamp.isoformat()
+                
+                # Queue for Gemini reporting
+                try:
+                    from .auto_gemini_reporter import get_auto_reporter
+                    auto_reporter = get_auto_reporter()
+                    if auto_reporter.enabled and event.get('snapshot_path'):
+                        event_data = timeline_event.to_dict()
+                        auto_reporter.queue_report(event_data, event['snapshot_path'])
+                except Exception as e:
+                    self.logger.debug(f"Auto Gemini reporting not available: {e}")
+                
+                # Queue for notifications
+                try:
+                    from .notification_manager import get_notification_manager
+                    notification_manager = get_notification_manager()
+                    event_data = timeline_event.to_dict()
+                    notification_manager.queue_event(event_data)
+                except Exception as e:
+                    self.logger.debug(f"Notification system not available: {e}")
+                
+                # Send to timeline callback
+                if self.on_timeline_event_callback:
+                    try:
+                        self.on_timeline_event_callback(timeline_event.to_dict())
+                    except Exception as e:
+                        self.logger.error(f"Error in timeline event callback: {e}")
+                
+                self.logger.info(f"Created {event['event_type']} event: {event['event_id']}")
+                
+        except Exception as e:
+            self.logger.error(f"Error handling enter/exit event: {e}")
     
     def _add_filtering_status(self, frame: np.ndarray) -> np.ndarray:
         """
-        Add filtering status overlay to the frame.
+        Add nothing - completely minimal.
         
         Args:
             frame: Input frame
             
         Returns:
-            Frame with filtering status overlay
+            Frame with no overlays
         """
-        # Add filtering status text
-        status_text = f"FILTERING: {', '.join(self.target_classes)}"
-        
-        # Position in top-left corner
-        text_size = cv2.getTextSize(status_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
-        
-        # Draw background rectangle
-        cv2.rectangle(frame, (10, 10), (text_size[0] + 20, text_size[1] + 20), (0, 255, 0), -1)
-        
-        # Draw text
-        cv2.putText(frame, status_text, (15, text_size[1] + 15), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-        
+        # Completely minimal - no status text at all
         return frame
     
     def _add_frame_info(self, frame: np.ndarray) -> np.ndarray:
-        """Add frame information overlay to the frame."""
-        # Add frame counter
-        cv2.putText(
-            frame, 
-            f"Frame: {self.frame_count}", 
-            (10, 30), 
-            cv2.FONT_HERSHEY_SIMPLEX, 
-            0.7, 
-            (0, 255, 0), 
-            2
-        )
-        
-        # Add FPS if available
-        if self.start_time and self.frame_count > 0:
-            elapsed = time.time() - self.start_time
-            fps = self.frame_count / elapsed
-            cv2.putText(
-                frame, 
-                f"FPS: {fps:.1f}", 
-                (10, 60), 
-                cv2.FONT_HERSHEY_SIMPLEX, 
-                0.7, 
-                (0, 255, 0), 
-                2
-            )
-        
+        """Add nothing - completely minimal."""
+        # Completely minimal - no text overlays at all
         return frame
     
     def _print_detection_info(self, detections: List[Dict], frame_number: int):

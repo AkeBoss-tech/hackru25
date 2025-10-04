@@ -87,6 +87,7 @@ class NotificationManager:
     def _determine_importance(self, event_data: Dict[str, Any]) -> NotificationImportance:
         """Determine notification importance based on event data."""
         objects = event_data.get('objects', [])
+        event_type = event_data.get('event_type', 'detected')
         
         if not objects:
             return NotificationImportance.LOW
@@ -108,17 +109,22 @@ class NotificationManager:
             else:
                 other_count += 1
         
-        # Determine importance based on counts and types
-        if person_count >= 2:
-            return NotificationImportance.CRITICAL  # Multiple people
-        elif person_count == 1:
-            return NotificationImportance.HIGH      # Single person
-        elif vehicle_count > 0:
-            return NotificationImportance.MEDIUM    # Vehicles
-        elif animal_count > 0:
-            return NotificationImportance.MEDIUM    # Animals
+        # Determine importance based on event type and object counts
+        if event_type in ['entered', 'exited']:
+            # Enter/exit events are important - they represent actual movement
+            if person_count >= 2:
+                return NotificationImportance.CRITICAL  # Multiple people entering/exiting
+            elif person_count == 1:
+                return NotificationImportance.HIGH      # Single person entering/exiting
+            elif vehicle_count > 0:
+                return NotificationImportance.MEDIUM    # Vehicle entering/exiting
+            elif animal_count > 0:
+                return NotificationImportance.MEDIUM    # Animal entering/exiting
+            else:
+                return NotificationImportance.LOW       # Other objects entering/exiting
         else:
-            return NotificationImportance.LOW       # Other objects
+            # Regular detection events are always low priority - just passive monitoring
+            return NotificationImportance.LOW
     
     def _should_notify(self, importance: NotificationImportance) -> bool:
         """Check if notification should be sent based on rate limiting."""
@@ -133,7 +139,7 @@ class NotificationManager:
         
         return time_since_last >= rate_limit
     
-    def _create_notification_message(self, event_data: Dict[str, Any], gemini_report: Optional[Dict]) -> tuple[str, str]:
+    def _create_notification_message(self, event_data: Dict[str, Any], gemini_report: Optional[Dict], event_type: str = "detected") -> tuple[str, str]:
         """Create notification title and message."""
         objects = event_data.get('objects', [])
         importance = self._determine_importance(event_data)
@@ -143,18 +149,43 @@ class NotificationManager:
         vehicle_count = sum(1 for obj in objects if obj.get('class_name', '').lower() in ['car', 'truck', 'bus', 'motorcycle', 'bicycle'])
         animal_count = sum(1 for obj in objects if obj.get('class_name', '').lower() in ['dog', 'cat', 'bird'])
         
-        # Create title based on importance and objects
-        if importance == NotificationImportance.CRITICAL:
-            title = "🚨 Multiple People Detected"
-        elif importance == NotificationImportance.HIGH:
-            title = "👤 Person at Door"
-        elif importance == NotificationImportance.MEDIUM:
-            if vehicle_count > 0:
-                title = "🚗 Vehicle Detected"
+        # Create title based on importance, objects, and event type
+        if event_type == "entered":
+            if importance == NotificationImportance.CRITICAL:
+                title = "🚨 Multiple People Entered"
+            elif importance == NotificationImportance.HIGH:
+                title = "👤 Person Entered"
+            elif importance == NotificationImportance.MEDIUM:
+                if vehicle_count > 0:
+                    title = "🚗 Vehicle Entered"
+                else:
+                    title = "🐕 Animal Entered"
             else:
-                title = "🐕 Animal Detected"
-        else:
-            title = "📱 Motion Detected"
+                title = "📱 Object Entered"
+        elif event_type == "exited":
+            if importance == NotificationImportance.CRITICAL:
+                title = "🚨 Multiple People Left"
+            elif importance == NotificationImportance.HIGH:
+                title = "👤 Person Left"
+            elif importance == NotificationImportance.MEDIUM:
+                if vehicle_count > 0:
+                    title = "🚗 Vehicle Left"
+                else:
+                    title = "🐕 Animal Left"
+            else:
+                title = "📱 Object Left"
+        else:  # detected (default)
+            if importance == NotificationImportance.CRITICAL:
+                title = "🚨 Multiple People Detected"
+            elif importance == NotificationImportance.HIGH:
+                title = "👤 Person Detected"
+            elif importance == NotificationImportance.MEDIUM:
+                if vehicle_count > 0:
+                    title = "🚗 Vehicle Detected"
+                else:
+                    title = "🐕 Animal Detected"
+            else:
+                title = "📱 Object Detected"
         
         # Create message
         if gemini_report and gemini_report.get('summary'):
@@ -171,9 +202,11 @@ class NotificationManager:
                 object_descriptions.append(f"{animal_count} animal{'s' if animal_count > 1 else ''}")
             
             if object_descriptions:
-                message = f"Detected: {', '.join(object_descriptions)}"
+                action = event_type.replace('detected', 'detected').replace('entered', 'entered frame').replace('exited', 'left frame')
+                message = f"{action.title()}: {', '.join(object_descriptions)}"
             else:
-                message = f"Motion detected with {len(objects)} object{'s' if len(objects) != 1 else ''}"
+                action = event_type.replace('detected', 'detected').replace('entered', 'entered frame').replace('exited', 'left frame')
+                message = f"{action.title()} with {len(objects)} object{'s' if len(objects) != 1 else ''}"
         
         return title, message
     
@@ -214,8 +247,11 @@ class NotificationManager:
             except Exception as e:
                 self.logger.debug(f"Could not get Gemini report: {e}")
             
+            # Get event type from event data
+            event_type = event_data.get('event_type', 'detected')
+            
             # Create notification message
-            title, message = self._create_notification_message(event_data, gemini_report)
+            title, message = self._create_notification_message(event_data, gemini_report, event_type)
             
             # Create notification event
             notification = NotificationEvent(

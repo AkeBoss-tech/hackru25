@@ -911,6 +911,28 @@ def clear_notifications():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/tracking/stats')
+def get_tracking_stats():
+    """Get enter/exit tracking statistics."""
+    try:
+        if web_processor.processor and hasattr(web_processor.processor, 'enter_exit_tracker'):
+            stats = web_processor.processor.enter_exit_tracker.get_stats()
+            return jsonify(stats)
+        else:
+            return jsonify({
+                'total_enters': 0,
+                'total_exits': 0,
+                'active_objects': 0,
+                'currently_tracking': 0,
+                'recently_exited': 0,
+                'total_seen': 0
+            })
+        
+    except Exception as e:
+        logger.error(f"Error getting tracking stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 # Initialize notification system callback
 def setup_notification_callbacks():
     """Setup notification callbacks for real-time updates."""
