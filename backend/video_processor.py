@@ -42,7 +42,8 @@ class VideoProcessor:
         device: str = "auto",
         enable_tracking: bool = True,
         tracking_method: str = "bytetrack",
-        enable_timeline: bool = True
+        enable_timeline: bool = True,
+        target_classes: List[str] = None
     ):
         """
         Initialize the VideoProcessor.
@@ -54,6 +55,7 @@ class VideoProcessor:
             enable_tracking: Whether to enable object tracking
             tracking_method: Tracking method to use ('bytetrack', 'botsort')
             enable_timeline: Whether to enable timeline event tracking
+            target_classes: List of class names to detect (None for all classes)
         """
         # Set model path - use provided path or find it dynamically
         if model_path is None:
@@ -73,9 +75,14 @@ class VideoProcessor:
         self.tracking_method = tracking_method
         self.enable_timeline = enable_timeline
         
-        # Setup logging
+        # Setup logging first
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
+        
+        # Set target classes for filtering
+        self.target_classes = target_classes
+        if target_classes:
+            self.logger.info(f"Target classes set to: {target_classes}")
         
         # Initialize model
         self._setup_model(device)
@@ -459,6 +466,14 @@ class VideoProcessor:
         
         # Extract detections
         detections = self.detection_utils.extract_detections(results[0], self.model.names)
+        
+        # Filter detections by target classes if specified
+        if self.target_classes and detections:
+            filtered_detections = []
+            for detection in detections:
+                if detection['class_name'] in self.target_classes:
+                    filtered_detections.append(detection)
+            detections = filtered_detections
         
         # Apply tracking if enabled
         if self.enable_tracking and self.tracker and detections:

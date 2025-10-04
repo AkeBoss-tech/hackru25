@@ -73,13 +73,14 @@ class WebVideoProcessor:
         self.frame_buffer = None
         self.stats = {}
         
-    def initialize(self, model_path=None, confidence=0.25, enable_tracking=True):
+    def initialize(self, model_path=None, confidence=0.25, enable_tracking=True, target_classes=None):
         """Initialize the video processor."""
         try:
             self.processor = VideoProcessor(
                 model_path=model_path,
                 confidence_threshold=confidence,
-                enable_tracking=enable_tracking
+                enable_tracking=enable_tracking,
+                target_classes=target_classes
             )
             
             # Set up callbacks
@@ -258,6 +259,23 @@ def get_cameras():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/classes')
+def get_detection_classes():
+    """Get available detection class sets."""
+    try:
+        from backend.surveillance_classes import get_available_class_sets
+        
+        class_sets = get_available_class_sets()
+        
+        return jsonify({
+            'class_sets': class_sets,
+            'default': 'core'
+        })
+    except Exception as e:
+        logger.error(f"Error getting detection classes: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/start_camera', methods=['POST'])
 def start_camera():
     """Start camera processing."""
@@ -268,6 +286,7 @@ def start_camera():
         camera_index = data.get('camera_index', 0)
         confidence = data.get('confidence', 0.25)
         enable_tracking = data.get('enable_tracking', True)
+        target_classes = data.get('target_classes', None)
         
         # Stop any current processing
         if is_processing:
@@ -275,7 +294,7 @@ def start_camera():
             time.sleep(1)
         
         # Initialize processor
-        if not web_processor.initialize(confidence=confidence, enable_tracking=enable_tracking):
+        if not web_processor.initialize(confidence=confidence, enable_tracking=enable_tracking, target_classes=target_classes):
             return jsonify({'error': 'Failed to initialize video processor'}), 500
         
         # Start processing
@@ -327,6 +346,8 @@ def upload_video():
             # Get processing parameters
             confidence = float(request.form.get('confidence', 0.25))
             enable_tracking = request.form.get('enable_tracking', 'true').lower() == 'true'
+            target_classes_str = request.form.get('target_classes', '')
+            target_classes = target_classes_str.split(',') if target_classes_str else None
             
             # Stop any current processing
             if is_processing:
@@ -334,7 +355,7 @@ def upload_video():
                 time.sleep(1)
             
             # Initialize processor
-            if not web_processor.initialize(confidence=confidence, enable_tracking=enable_tracking):
+            if not web_processor.initialize(confidence=confidence, enable_tracking=enable_tracking, target_classes=target_classes):
                 return jsonify({'error': 'Failed to initialize video processor'}), 500
             
             # Start processing

@@ -48,6 +48,7 @@ function initializeApp() {
     loadConfig();
     loadTimelineEvents();
     loadGeminiStatus();
+    loadDetectionClasses();
     
     // Auto-start processing after a short delay
     setTimeout(() => {
@@ -267,6 +268,10 @@ async function startCameraProcessing(confidence, enableTracking) {
         throw new Error('Please select a camera');
     }
     
+    // Get selected target classes
+    const classSelect = document.getElementById('class-select');
+    const targetClasses = classSelect.value ? classSelect.value.split(',') : null;
+    
     const response = await fetch('/api/start_camera', {
         method: 'POST',
         headers: {
@@ -275,7 +280,8 @@ async function startCameraProcessing(confidence, enableTracking) {
         body: JSON.stringify({
             camera_index: cameraIndex,
             confidence: confidence,
-            enable_tracking: enableTracking
+            enable_tracking: enableTracking,
+            target_classes: targetClasses
         })
     });
     
@@ -298,10 +304,15 @@ async function startVideoUpload(confidence, enableTracking) {
         throw new Error('Please select a video file');
     }
     
+    // Get selected target classes
+    const classSelect = document.getElementById('class-select');
+    const targetClasses = classSelect.value || '';
+    
     const formData = new FormData();
     formData.append('video', fileInput.files[0]);
     formData.append('confidence', confidence);
     formData.append('enable_tracking', enableTracking);
+    formData.append('target_classes', targetClasses);
     
     const response = await fetch('/api/upload_video', {
         method: 'POST',
@@ -1172,5 +1183,41 @@ async function loadGeminiStatus() {
     } catch (error) {
         console.error('Error loading Gemini status:', error);
         updateGeminiStatus(false, null, 'Add GEMINI_API_KEY to your .env file');
+    }
+}
+
+// Load detection classes
+async function loadDetectionClasses() {
+    try {
+        const response = await fetch('/api/classes');
+        const data = await response.json();
+        
+        if (data.class_sets) {
+            updateClassSelect(data.class_sets, data.default);
+        } else {
+            console.error('Error loading detection classes:', data.error);
+        }
+    } catch (error) {
+        console.error('Error loading detection classes:', error);
+    }
+}
+
+function updateClassSelect(classSets, defaultSet) {
+    const select = document.getElementById('class-select');
+    
+    // Clear existing options except the first one
+    select.innerHTML = '<option value="">All Classes (80 objects)</option>';
+    
+    // Add class set options
+    Object.entries(classSets).forEach(([name, classes]) => {
+        const option = document.createElement('option');
+        option.value = classes.join(',');
+        option.textContent = `${name.charAt(0).toUpperCase() + name.slice(1)} (${classes.length} objects)`;
+        select.appendChild(option);
+    });
+    
+    // Set default selection
+    if (defaultSet && classSets[defaultSet]) {
+        select.value = classSets[defaultSet].join(',');
     }
 }
