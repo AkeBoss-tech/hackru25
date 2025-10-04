@@ -38,3 +38,4 @@ videos/
 # Logs
 *.log
 
+.env

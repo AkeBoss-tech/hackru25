@@ -18,22 +18,19 @@ import numpy as np
 from flask import Flask, render_template, request, jsonify, Response, send_file
 from flask_socketio import SocketIO, emit
 import io
+
+# Add the parent directory to Python path to import backend modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from werkzeug.utils import secure_filename
 
-# Add backend to path
-backend_path = os.path.join(os.path.dirname(__file__), '..', 'backend')
-sys.path.insert(0, backend_path)
-
 try:
-    from video_processor import VideoProcessor
-    from camera_handler import CameraHandler
-    from config import Config
-except ImportError:
-    # Fallback to backend module import
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from backend.video_processor import VideoProcessor
     from backend.camera_handler import CameraHandler
     from backend.config import Config
+except ImportError as e:
+    print(f"Error importing backend modules: {e}")
+    print("Make sure you're running from the project root directory")
+    sys.exit(1)
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -546,6 +543,249 @@ def clear_timeline_events():
         return jsonify({'status': 'cleared', 'message': 'All timeline events cleared'})
     except Exception as e:
         logger.error(f"Error clearing timeline events: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/gemini/reports/<event_id>')
+def get_gemini_report(event_id):
+    """Get Gemini AI report for a specific event."""
+    try:
+        from backend.auto_gemini_reporter import get_auto_reporter
+        
+        auto_reporter = get_auto_reporter()
+        if not auto_reporter.enabled:
+            return jsonify({'error': 'Gemini reporting not enabled'}), 404
+        
+        report = auto_reporter.get_report(event_id)
+        if not report:
+            return jsonify({'error': 'Report not found'}), 404
+        
+        return jsonify(report)
+    except Exception as e:
+        logger.error(f"Error getting Gemini report for {event_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/gemini/reports')
+def get_recent_gemini_reports():
+    """Get recent Gemini AI reports."""
+    try:
+        from backend.auto_gemini_reporter import get_auto_reporter
+        
+        auto_reporter = get_auto_reporter()
+        if not auto_reporter.enabled:
+            return jsonify({'error': 'Gemini reporting not enabled'}), 404
+        
+        limit = request.args.get('limit', 10, type=int)
+        reports = auto_reporter.get_recent_reports(limit)
+        
+        return jsonify({
+            'reports': reports,
+            'count': len(reports)
+        })
+    except Exception as e:
+        logger.error(f"Error getting recent Gemini reports: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/gemini/stats')
+def get_gemini_stats():
+    """Get Gemini reporter statistics."""
+    try:
+        from backend.auto_gemini_reporter import get_auto_reporter
+        
+        auto_reporter = get_auto_reporter()
+        stats = auto_reporter.get_stats()
+        
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"Error getting Gemini stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/gemini/check-env')
+def check_gemini_env():
+    """Check if Gemini API key is available in environment."""
+    try:
+        import os
+        api_key = os.getenv('GEMINI_API_KEY')
+        
+        return jsonify({
+            'has_api_key': bool(api_key),
+            'message': 'API key found in environment' if api_key else 'No API key in environment'
+        })
+    except Exception as e:
+        logger.error(f"Error checking Gemini environment: {e}")
+        return jsonify({'has_api_key': False, 'error': str(e)}), 500
+
+
+@app.route('/api/gemini/enable', methods=['POST'])
+def enable_gemini_reporting():
+    """Enable Gemini auto-reporting."""
+    try:
+        from backend.auto_gemini_reporter import enable_auto_reporting
+        import os
+        
+        data = request.get_json() or {}
+        api_key = data.get('api_key')
+        
+        # If api_key is 'from_env', use environment variable
+        if api_key == 'from_env':
+            api_key = os.getenv('GEMINI_API_KEY')
+        
+        if not api_key:
+            return jsonify({'error': 'GEMINI_API_KEY not found in environment variables'}), 400
+        
+        auto_reporter = enable_auto_reporting(api_key)
+        
+        return jsonify({
+            'status': 'enabled',
+            'message': 'Gemini auto-reporting enabled using environment variable',
+            'stats': auto_reporter.get_stats()
+        })
+    except Exception as e:
+        logger.error(f"Error enabling Gemini reporting: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/gemini/disable', methods=['POST'])
+def disable_gemini_reporting():
+    """Disable Gemini auto-reporting."""
+    try:
+        from backend.auto_gemini_reporter import disable_auto_reporting
+        
+        disable_auto_reporting()
+        
+        return jsonify({
+            'status': 'disabled',
+            'message': 'Gemini auto-reporting disabled'
+        })
+    except Exception as e:
+        logger.error(f"Error disabling Gemini reporting: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/vector/search')
+def vector_search():
+    """Search events using semantic similarity."""
+    try:
+        from backend.vector_database import get_vector_database
+        
+        # Get search parameters
+        query = request.args.get('q', '')
+        limit = request.args.get('limit', 10, type=int)
+        min_similarity = request.args.get('min_similarity', 0.7, type=float)
+        
+        if not query:
+            return jsonify({'error': 'Query parameter required'}), 400
+        
+        vector_db = get_vector_database()
+        results = vector_db.search_similar_events(
+            query=query,
+            limit=limit,
+            min_similarity=min_similarity
+        )
+        
+        return jsonify({
+            'query': query,
+            'results': results,
+            'count': len(results)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in vector search: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/vector/search/similar/<event_id>')
+def search_similar_to_event(event_id):
+    """Find events similar to a specific event."""
+    try:
+        from backend.vector_database import get_vector_database
+        
+        limit = request.args.get('limit', 10, type=int)
+        
+        vector_db = get_vector_database()
+        
+        # Get the event first
+        event = vector_db.get_event_by_id(event_id)
+        if not event:
+            return jsonify({'error': 'Event not found'}), 404
+        
+        # Search for similar events using the event's document
+        results = vector_db.search_similar_events(
+            query=event['document'],
+            limit=limit + 1,  # +1 because the original event will be included
+            min_similarity=0.7
+        )
+        
+        # Filter out the original event
+        similar_results = [r for r in results if r['event_id'] != event_id]
+        
+        return jsonify({
+            'original_event': event,
+            'similar_events': similar_results,
+            'count': len(similar_results)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error searching similar events: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/vector/events')
+def get_vector_events():
+    """Get recent events from vector database."""
+    try:
+        from backend.vector_database import get_vector_database
+        
+        limit = request.args.get('limit', 50, type=int)
+        
+        vector_db = get_vector_database()
+        events = vector_db.get_recent_events(limit)
+        
+        return jsonify({
+            'events': events,
+            'count': len(events)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting vector events: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/vector/stats')
+def get_vector_stats():
+    """Get vector database statistics."""
+    try:
+        from backend.vector_database import get_vector_database
+        
+        vector_db = get_vector_database()
+        stats = vector_db.get_stats()
+        
+        return jsonify(stats)
+        
+    except Exception as e:
+        logger.error(f"Error getting vector stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/vector/clear', methods=['POST'])
+def clear_vector_database():
+    """Clear all events from vector database."""
+    try:
+        from backend.vector_database import get_vector_database
+        
+        vector_db = get_vector_database()
+        vector_db.clear_database()
+        
+        return jsonify({
+            'status': 'cleared',
+            'message': 'Vector database cleared'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error clearing vector database: {e}")
         return jsonify({'error': str(e)}), 500
 
 

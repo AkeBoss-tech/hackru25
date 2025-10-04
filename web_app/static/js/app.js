@@ -47,6 +47,7 @@ function initializeApp() {
     loadCameras();
     loadConfig();
     loadTimelineEvents();
+    loadGeminiStatus();
     
     // Auto-start processing after a short delay
     setTimeout(() => {
@@ -604,6 +605,11 @@ function addTimelineEvent(eventData) {
     // Render the timeline
     renderTimelineEvents();
     updateTimelineStats();
+    
+    // Auto-load Gemini report for new events after a short delay
+    setTimeout(() => {
+        loadGeminiReport(eventData.event_id);
+    }, 2000); // Wait 2 seconds for Gemini report to be generated
 }
 
 function renderTimelineEvents() {
@@ -657,6 +663,25 @@ function createTimelineEventHtml(event) {
         `;
     }
     
+    // Gemini report section
+    const geminiReportHtml = `
+        <div class="timeline-event-gemini" id="gemini-${event.event_id}">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0 text-primary">
+                    <i class="fas fa-robot"></i> AI Analysis
+                </h6>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadGeminiReport('${event.event_id}')">
+                    <i class="fas fa-sync"></i> Load Report
+                </button>
+            </div>
+            <div class="gemini-report-content" id="gemini-content-${event.event_id}">
+                <div class="text-muted small">
+                    <i class="fas fa-spinner fa-spin"></i> Loading AI analysis...
+                </div>
+            </div>
+        </div>
+    `;
+    
     return `
         <div class="timeline-event new" data-event-id="${event.event_id}">
             <div class="timeline-event-header">
@@ -666,6 +691,7 @@ function createTimelineEventHtml(event) {
             <div class="timeline-event-source">${source}</div>
             <div class="timeline-event-objects">${objectsHtml}</div>
             ${snapshotHtml}
+            ${geminiReportHtml}
             <div class="timeline-event-meta">
                 <span class="timeline-event-frame">Frame: ${event.frame_number}</span>
                 <span class="timeline-event-confidence">
@@ -893,4 +919,258 @@ function showSuccess(message) {
             toast.remove();
         }
     }, 3000);
+}
+
+// Gemini Report Functions
+async function loadGeminiReport(eventId) {
+    const contentDiv = document.getElementById(`gemini-content-${eventId}`);
+    if (!contentDiv) return;
+    
+    try {
+        // Show loading state
+        contentDiv.innerHTML = `
+            <div class="text-muted small">
+                <i class="fas fa-spinner fa-spin"></i> Loading AI analysis...
+            </div>
+        `;
+        
+        const response = await fetch(`/api/gemini/reports/${eventId}`);
+        const report = await response.json();
+        
+        if (response.ok && report) {
+            displayGeminiReport(eventId, report);
+        } else {
+            // Report not available yet or error
+            contentDiv.innerHTML = `
+                <div class="text-muted small">
+                    <i class="fas fa-clock"></i> AI analysis pending...
+                    <br><small>Report may take a few seconds to generate</small>
+                </div>
+            `;
+            
+            // Retry after 3 seconds
+            setTimeout(() => {
+                loadGeminiReport(eventId);
+            }, 3000);
+        }
+    } catch (error) {
+        console.error('Error loading Gemini report:', error);
+        contentDiv.innerHTML = `
+            <div class="text-danger small">
+                <i class="fas fa-exclamation-triangle"></i> Failed to load AI analysis
+                <br><small>Click "Load Report" to retry</small>
+            </div>
+        `;
+    }
+}
+
+function displayGeminiReport(eventId, report) {
+    const contentDiv = document.getElementById(`gemini-content-${eventId}`);
+    if (!contentDiv) return;
+    
+    let reportHtml = '';
+    
+    // Summary
+    if (report.summary) {
+        reportHtml += `
+            <div class="gemini-report-section">
+                <strong><i class="fas fa-file-text"></i> Summary:</strong>
+                <p class="mb-2">${report.summary}</p>
+            </div>
+        `;
+    }
+    
+    // Objects detected
+    if (report.objects_detected && report.objects_detected.length > 0) {
+        const objectsText = report.objects_detected.join(', ');
+        reportHtml += `
+            <div class="gemini-report-section">
+                <strong><i class="fas fa-eye"></i> Objects:</strong>
+                <span class="badge bg-info me-1">${objectsText}</span>
+            </div>
+        `;
+    }
+    
+    // Object IDs
+    if (report.object_ids && report.object_ids.length > 0) {
+        const idsText = report.object_ids.join(', ');
+        reportHtml += `
+            <div class="gemini-report-section">
+                <strong><i class="fas fa-tag"></i> Object IDs:</strong>
+                <code>${idsText}</code>
+            </div>
+        `;
+    }
+    
+    // Activity
+    if (report.activity) {
+        reportHtml += `
+            <div class="gemini-report-section">
+                <strong><i class="fas fa-running"></i> Activity:</strong>
+                <span>${report.activity}</span>
+            </div>
+        `;
+    }
+    
+    // Confidence
+    if (report.confidence) {
+        const confidenceClass = report.confidence === 'high' ? 'success' : 
+                               report.confidence === 'medium' ? 'warning' : 'secondary';
+        reportHtml += `
+            <div class="gemini-report-section">
+                <strong><i class="fas fa-chart-line"></i> Confidence:</strong>
+                <span class="badge bg-${confidenceClass}">${report.confidence}</span>
+            </div>
+        `;
+    }
+    
+    // Metadata
+    if (report._metadata) {
+        const timestamp = new Date(report._metadata.timestamp).toLocaleString();
+        reportHtml += `
+            <div class="gemini-report-section">
+                <small class="text-muted">
+                    <i class="fas fa-robot"></i> Generated by ${report._metadata.model_used}
+                    <br><i class="fas fa-clock"></i> ${timestamp}
+                </small>
+            </div>
+        `;
+    }
+    
+    contentDiv.innerHTML = reportHtml || `
+        <div class="text-muted small">
+            <i class="fas fa-info-circle"></i> No AI analysis available
+        </div>
+    `;
+}
+
+// Auto-load Gemini reports for all timeline events when page loads
+async function loadAllGeminiReports() {
+    for (const event of timelineEvents) {
+        setTimeout(() => {
+            loadGeminiReport(event.event_id);
+        }, Math.random() * 2000); // Stagger requests to avoid overwhelming the API
+    }
+}
+
+// Override refreshTimeline to also load Gemini reports
+const originalRefreshTimeline = refreshTimeline;
+function refreshTimeline() {
+    originalRefreshTimeline();
+    // Auto-load Gemini reports after timeline loads
+    setTimeout(() => {
+        loadAllGeminiReports();
+    }, 1000);
+}
+
+// Gemini Control Functions
+function toggleGeminiReporting() {
+    const checkbox = document.getElementById('enable-gemini');
+    
+    if (checkbox.checked) {
+        enableGeminiFromEnv();
+    } else {
+        disableGeminiReporting();
+    }
+}
+
+async function enableGeminiFromEnv() {
+    try {
+        // Enable Gemini using the API key from environment variables
+        const response = await fetch('/api/gemini/enable', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ api_key: 'from_env' }) // Signal to use env var
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showToast('Gemini AI reporting enabled successfully!', 'success');
+            updateGeminiStatus(true, result.stats);
+            
+            // Auto-load existing Gemini reports
+            setTimeout(() => {
+                loadAllGeminiReports();
+            }, 1000);
+        } else {
+            showToast(`Failed to enable Gemini: ${result.error}`, 'danger');
+            // Uncheck the checkbox if enabling failed
+            document.getElementById('enable-gemini').checked = false;
+        }
+    } catch (error) {
+        console.error('Error enabling Gemini:', error);
+        showToast('Error enabling Gemini reporting', 'danger');
+        // Uncheck the checkbox if enabling failed
+        document.getElementById('enable-gemini').checked = false;
+    }
+}
+
+async function disableGeminiReporting() {
+    try {
+        const response = await fetch('/api/gemini/disable', {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            showToast('Gemini AI reporting disabled', 'info');
+            updateGeminiStatus(false);
+        }
+    } catch (error) {
+        console.error('Error disabling Gemini:', error);
+    }
+}
+
+function updateGeminiStatus(enabled, stats = null, customMessage = null) {
+    const statusDiv = document.getElementById('gemini-status');
+    
+    if (enabled) {
+        statusDiv.innerHTML = `
+            <small class="text-success">
+                <i class="fas fa-check-circle"></i> Gemini reporting enabled
+                ${stats ? `<br><small>Reports: ${stats.successful_reports || 0} | Cost: $${(stats.total_cost_estimate || 0).toFixed(4)}</small>` : ''}
+            </small>
+        `;
+    } else {
+        const message = customMessage || 'Gemini reporting disabled';
+        const icon = customMessage && customMessage.includes('API key found') ? 'fa-key' : 'fa-info-circle';
+        const colorClass = customMessage && customMessage.includes('API key found') ? 'text-warning' : 'text-muted';
+        
+        statusDiv.innerHTML = `
+            <small class="${colorClass}">
+                <i class="fas ${icon}"></i> ${message}
+            </small>
+        `;
+    }
+}
+
+// Load Gemini status on page load
+async function loadGeminiStatus() {
+    try {
+        const response = await fetch('/api/gemini/stats');
+        const stats = await response.json();
+        
+        if (stats.enabled) {
+            document.getElementById('enable-gemini').checked = true;
+            updateGeminiStatus(true, stats);
+        } else {
+            // Check if API key is available in environment
+            try {
+                const envResponse = await fetch('/api/gemini/check-env');
+                const envData = await envResponse.json();
+                if (envData.has_api_key) {
+                    updateGeminiStatus(false, null, 'API key found in environment. Click to enable.');
+                } else {
+                    updateGeminiStatus(false, null, 'Add GEMINI_API_KEY to your .env file');
+                }
+            } catch (envError) {
+                updateGeminiStatus(false, null, 'Add GEMINI_API_KEY to your .env file');
+            }
+        }
+    } catch (error) {
+        console.error('Error loading Gemini status:', error);
+        updateGeminiStatus(false, null, 'Add GEMINI_API_KEY to your .env file');
+    }
 }

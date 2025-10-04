@@ -446,6 +446,16 @@ class TimelineManager:
         if track_id is not None and track_id not in self._unique_objects:
             self._unique_objects.add(track_id)
             self.stats['unique_objects_count'] = len(self._unique_objects)
+        
+        # Queue for auto Gemini report generation
+        try:
+            from .auto_gemini_reporter import get_auto_reporter
+            auto_reporter = get_auto_reporter()
+            if auto_reporter.enabled and snapshot_path:
+                event_data = event.to_dict()
+                auto_reporter.queue_report(event_data, snapshot_path)
+        except Exception as e:
+            self.logger.debug(f"Auto Gemini reporting not available: {e}")
             
             # Count specific object types
             class_name = detection.get('class_name', 'unknown')

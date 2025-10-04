@@ -19,6 +19,12 @@ A comprehensive video processing system with YOLOv8 object detection, tracking, 
 - **WebSocket Communication**: Real-time video feed and detection updates
 - **Mobile Friendly**: Works on desktop, tablet, and mobile devices
 
+### AI Integration
+- **Gemini AI Analysis**: Automatic brief reports for detected objects
+- **Vector Database**: Semantic search through events and AI reports
+- **Smart Search**: Find similar events using natural language queries
+- **Cost-Effective**: Optimized prompts to minimize API usage
+
 ## 📁 Project Structure
 
 ```
@@ -75,6 +81,17 @@ pip install -r requirements.txt
 ### 4. Download YOLOv8 Model
 
 The YOLOv8 model will be automatically downloaded on first use, or you can manually download `yolov8n.pt` to the project root.
+
+### 5. Gemini AI Setup (Optional)
+
+```bash
+# Copy the example environment file
+cp gemini.env.example .env
+
+# Edit .env and add your Gemini API key
+# Get your API key from: https://makersuite.google.com/app/apikey
+# The system will automatically use GEMINI_API_KEY from your .env file
+```
 
 ## 🚀 Quick Start
 

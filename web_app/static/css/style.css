@@ -564,3 +564,48 @@ body {
         background-color: #4a5568;
     }
 }
+
+/* Gemini Report Styles */
+.timeline-event-gemini {
+    margin: 15px 0;
+    padding: 15px;
+    background-color: #f8f9ff;
+    border: 1px solid #e3e8ff;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+}
+
+.gemini-report-content {
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.gemini-report-section {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.gemini-report-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.gemini-report-section strong {
+    color: #495057;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.gemini-report-section p {
+    margin: 0;
+    color: #6c757d;
+}
+
+.gemini-report-section code {
+    background-color: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: #e83e8c;
+}

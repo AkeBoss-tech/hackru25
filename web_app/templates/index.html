@@ -84,6 +84,28 @@
                             </div>
                         </div>
 
+                        <!-- Gemini AI Controls -->
+                        <div class="mb-3">
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white py-2">
+                                    <h6 class="mb-0"><i class="fas fa-robot"></i> AI Analysis</h6>
+                                </div>
+                                <div class="card-body py-2">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="enable-gemini" onchange="toggleGeminiReporting()">
+                                        <label class="form-check-label" for="enable-gemini">
+                                            Enable Auto Gemini Reports
+                                        </label>
+                                    </div>
+                                    <div id="gemini-status" class="mt-2">
+                                        <small class="text-muted">
+                                            <i class="fas fa-info-circle"></i> Gemini reporting disabled
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
 
                         <!-- Control Buttons -->
                         <div class="d-grid gap-2">
