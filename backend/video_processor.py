@@ -487,8 +487,8 @@ class VideoProcessor:
         if self.enable_tracking and self.tracker and detections:
             detections = self.tracker.update(detections, frame)
         
-        # Draw annotations
-        annotated_frame = results[0].plot()
+        # Draw annotations - use our own drawing to respect filtering
+        annotated_frame = self._draw_filtered_detections(frame, detections)
         
         # Add tracking info if enabled
         if self.enable_tracking and self.tracker:
@@ -497,7 +497,109 @@ class VideoProcessor:
         # Add frame info
         annotated_frame = self._add_frame_info(annotated_frame)
         
+        # Add filtering status overlay
+        if self.target_classes:
+            annotated_frame = self._add_filtering_status(annotated_frame)
+        
         return annotated_frame, detections, raw_frame
+    
+    def _draw_filtered_detections(self, frame: np.ndarray, detections: List[Dict]) -> np.ndarray:
+        """
+        Draw only the filtered detections on the frame.
+        
+        Args:
+            frame: Input frame
+            detections: List of filtered detections to draw
+            
+        Returns:
+            Annotated frame with only filtered detections
+        """
+        annotated_frame = frame.copy()
+        
+        if not detections:
+            return annotated_frame
+        
+        for detection in detections:
+            # Get detection info
+            bbox = detection.get('bbox', [])
+            class_name = detection.get('class_name', 'unknown')
+            confidence = detection.get('confidence', 0.0)
+            track_id = detection.get('track_id')
+            
+            if len(bbox) != 4:
+                continue
+                
+            x1, y1, x2, y2 = map(int, bbox)
+            
+            # Choose color based on class (similar to YOLOv8)
+            color = self._get_class_color(class_name)
+            
+            # Draw bounding box
+            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+            
+            # Create label
+            label = f"{class_name}: {confidence:.2f}"
+            if track_id is not None:
+                label += f" ID:{track_id}"
+            
+            # Draw label background
+            label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+            cv2.rectangle(annotated_frame, (x1, y1 - label_size[1] - 10), 
+                         (x1 + label_size[0], y1), color, -1)
+            
+            # Draw label text
+            cv2.putText(annotated_frame, label, (x1, y1 - 5), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        
+        return annotated_frame
+    
+    def _get_class_color(self, class_name: str) -> tuple:
+        """
+        Get a consistent color for a class name.
+        
+        Args:
+            class_name: Name of the class
+            
+        Returns:
+            BGR color tuple
+        """
+        # Create a hash-based color for consistency
+        hash_val = hash(class_name) % 16777216  # 24-bit color
+        r = (hash_val >> 16) & 255
+        g = (hash_val >> 8) & 255
+        b = hash_val & 255
+        
+        # Ensure minimum brightness
+        r = max(r, 50)
+        g = max(g, 50)
+        b = max(b, 50)
+        
+        return (int(b), int(g), int(r))  # BGR format for OpenCV
+    
+    def _add_filtering_status(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Add filtering status overlay to the frame.
+        
+        Args:
+            frame: Input frame
+            
+        Returns:
+            Frame with filtering status overlay
+        """
+        # Add filtering status text
+        status_text = f"FILTERING: {', '.join(self.target_classes)}"
+        
+        # Position in top-left corner
+        text_size = cv2.getTextSize(status_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+        
+        # Draw background rectangle
+        cv2.rectangle(frame, (10, 10), (text_size[0] + 20, text_size[1] + 20), (0, 255, 0), -1)
+        
+        # Draw text
+        cv2.putText(frame, status_text, (15, text_size[1] + 15), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+        
+        return frame
     
     def _add_frame_info(self, frame: np.ndarray) -> np.ndarray:
         """Add frame information overlay to the frame."""
