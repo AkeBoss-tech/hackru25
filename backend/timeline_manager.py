@@ -456,6 +456,15 @@ class TimelineManager:
                 auto_reporter.queue_report(event_data, snapshot_path)
         except Exception as e:
             self.logger.debug(f"Auto Gemini reporting not available: {e}")
+        
+        # Queue for notification system
+        try:
+            from .notification_manager import get_notification_manager
+            notification_manager = get_notification_manager()
+            event_data = event.to_dict()
+            notification_manager.queue_event(event_data)
+        except Exception as e:
+            self.logger.debug(f"Notification system not available: {e}")
             
             # Count specific object types
             class_name = detection.get('class_name', 'unknown')

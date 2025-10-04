@@ -18,6 +18,18 @@ let timelineStats = {
     snapshots: 0
 };
 
+// Notification system variables
+let notifications = [];
+let notificationStats = {
+    total: 0,
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0
+};
+let soundEnabled = true;
+let currentPopupNotification = null;
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -48,6 +60,8 @@ function initializeApp() {
     loadConfig();
     loadTimelineEvents();
     loadGeminiStatus();
+    loadNotifications();
+    loadNotificationStats();
     loadDetectionClasses();
     
     // Auto-start processing after a short delay
@@ -111,6 +125,11 @@ function initializeSocket() {
     
     socket.on('status', function(data) {
         console.log('Status:', data.message);
+    });
+    
+    // Notification system event handlers
+    socket.on('new_notification', function(notificationData) {
+        handleNewNotification(notificationData);
     });
 }
 
@@ -1219,5 +1238,331 @@ function updateClassSelect(classSets, defaultSet) {
     // Set default selection
     if (defaultSet && classSets[defaultSet]) {
         select.value = classSets[defaultSet].join(',');
+    }
+}
+
+// ================================
+// NOTIFICATION SYSTEM FUNCTIONS
+// ================================
+
+// Load notifications from server
+async function loadNotifications() {
+    try {
+        const response = await fetch('/api/notifications?limit=20');
+        const data = await response.json();
+        
+        if (data.notifications) {
+            notifications = data.notifications;
+            updateNotificationsDisplay();
+        } else {
+            console.error('Error loading notifications:', data.error);
+        }
+    } catch (error) {
+        console.error('Error loading notifications:', error);
+    }
+}
+
+// Load notification statistics
+async function loadNotificationStats() {
+    try {
+        const response = await fetch('/api/notifications/stats');
+        const data = await response.json();
+        
+        if (data) {
+            notificationStats = {
+                total: data.total_notifications || 0,
+                critical: data.by_importance?.critical || 0,
+                high: data.by_importance?.high || 0,
+                medium: data.by_importance?.medium || 0,
+                low: data.by_importance?.low || 0
+            };
+            updateNotificationStats();
+        }
+    } catch (error) {
+        console.error('Error loading notification stats:', error);
+    }
+}
+
+// Handle new notification from SocketIO
+function handleNewNotification(notificationData) {
+    console.log('New notification received:', notificationData);
+    
+    // Add to notifications array
+    notifications.unshift(notificationData);
+    
+    // Update display
+    updateNotificationsDisplay();
+    
+    // Show popup for high/critical notifications
+    if (notificationData.importance === 'high' || notificationData.importance === 'critical') {
+        showNotificationPopup(notificationData);
+    }
+    
+    // Play sound for important notifications
+    if (soundEnabled && (notificationData.importance === 'high' || notificationData.importance === 'critical')) {
+        playNotificationSound(notificationData.importance);
+    }
+    
+    // Update stats
+    loadNotificationStats();
+}
+
+// Update notifications display
+function updateNotificationsDisplay() {
+    const container = document.getElementById('notifications-container');
+    
+    if (!notifications || notifications.length === 0) {
+        container.innerHTML = `
+            <div class="text-muted text-center">
+                <i class="fas fa-bell-slash"></i><br>
+                No notifications yet
+            </div>
+        `;
+        return;
+    }
+    
+    const notificationsHtml = notifications.slice(0, 10).map(notif => {
+        const timeAgo = getTimeAgo(new Date(notif.timestamp));
+        const importanceClass = notif.importance;
+        
+        return `
+            <div class="notification-item ${importanceClass}" onclick="viewNotificationDetails('${notif.id}')">
+                <div class="notification-importance-badge ${importanceClass}">
+                    ${notif.importance.toUpperCase()}
+                </div>
+                <div class="notification-item-header">
+                    <div class="notification-item-title">${notif.title}</div>
+                    <div class="notification-item-time">${timeAgo}</div>
+                </div>
+                <div class="notification-item-message">${notif.message}</div>
+                <div class="notification-item-actions">
+                    <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); viewEventDetails('${notif.event_data?.event_id}')">
+                        <i class="fas fa-eye"></i> View Event
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); dismissNotification('${notif.id}')">
+                        <i class="fas fa-times"></i> Dismiss
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = notificationsHtml;
+}
+
+// Update notification statistics display
+function updateNotificationStats() {
+    // This would update a stats section if we had one
+    // For now, we'll just log the stats
+    console.log('Notification Stats:', notificationStats);
+}
+
+// Show notification popup
+function showNotificationPopup(notificationData) {
+    // Dismiss any existing popup
+    if (currentPopupNotification) {
+        dismissPopup();
+    }
+    
+    const popup = document.getElementById('notification-popup');
+    const title = document.getElementById('popup-title');
+    const message = document.getElementById('popup-message');
+    
+    // Update content
+    title.textContent = notificationData.title;
+    message.textContent = notificationData.message;
+    
+    // Update styling based on importance
+    popup.className = `notification-popup notification-content ${notificationData.importance}`;
+    
+    // Show popup
+    popup.style.display = 'block';
+    currentPopupNotification = notificationData;
+    
+    // Auto-dismiss after 10 seconds for non-critical notifications
+    if (notificationData.importance !== 'critical') {
+        setTimeout(() => {
+            if (currentPopupNotification === notificationData) {
+                dismissPopup();
+            }
+        }, 10000);
+    }
+}
+
+// Dismiss popup notification
+function dismissPopup() {
+    const popup = document.getElementById('notification-popup');
+    
+    if (currentPopupNotification) {
+        // Dismiss the notification on the server
+        dismissNotification(currentPopupNotification.id);
+        currentPopupNotification = null;
+    }
+    
+    popup.classList.add('hiding');
+    setTimeout(() => {
+        popup.style.display = 'none';
+        popup.classList.remove('hiding');
+    }, 300);
+}
+
+// Play notification sound
+function playNotificationSound(importance) {
+    if (!soundEnabled) return;
+    
+    try {
+        // Create audio context for different sound patterns
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        let frequency, duration, pattern;
+        
+        switch (importance) {
+            case 'critical':
+                frequency = 800;
+                duration = 200;
+                pattern = [0, 100, 200, 300, 400, 500]; // 6 beeps
+                break;
+            case 'high':
+                frequency = 600;
+                duration = 150;
+                pattern = [0, 200, 400]; // 3 beeps
+                break;
+            default:
+                frequency = 400;
+                duration = 100;
+                pattern = [0]; // 1 beep
+        }
+        
+        pattern.forEach((delay, index) => {
+            setTimeout(() => {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + duration / 1000);
+            }, delay);
+        });
+        
+        // Show sound indicator
+        showSoundIndicator(importance);
+        
+    } catch (error) {
+        console.warn('Could not play notification sound:', error);
+    }
+}
+
+// Show sound indicator
+function showSoundIndicator(importance) {
+    const indicator = document.createElement('div');
+    indicator.className = 'sound-indicator';
+    indicator.innerHTML = `<i class="fas fa-volume-up"></i> ${importance.toUpperCase()} Alert`;
+    
+    document.body.appendChild(indicator);
+    
+    // Remove after animation
+    setTimeout(() => {
+        if (indicator.parentNode) {
+            indicator.parentNode.removeChild(indicator);
+        }
+    }, 2000);
+}
+
+// Dismiss notification
+async function dismissNotification(notificationId) {
+    try {
+        const response = await fetch(`/api/notifications/${notificationId}/dismiss`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            // Remove from local array
+            notifications = notifications.filter(n => n.id !== notificationId);
+            updateNotificationsDisplay();
+            loadNotificationStats();
+        } else {
+            console.error('Failed to dismiss notification');
+        }
+    } catch (error) {
+        console.error('Error dismissing notification:', error);
+    }
+}
+
+// Clear all notifications
+async function clearNotifications() {
+    if (!confirm('Are you sure you want to clear all notifications?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/notifications/clear', {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            notifications = [];
+            updateNotificationsDisplay();
+            loadNotificationStats();
+            showToast('All notifications cleared', 'success');
+        } else {
+            console.error('Failed to clear notifications');
+        }
+    } catch (error) {
+        console.error('Error clearing notifications:', error);
+    }
+}
+
+// View notification details
+function viewNotificationDetails(notificationId) {
+    const notification = notifications.find(n => n.id === notificationId);
+    if (!notification) return;
+    
+    // For now, just show an alert with the details
+    // In a real app, this might open a modal or navigate to a details page
+    const details = `
+        Title: ${notification.title}
+        Message: ${notification.message}
+        Importance: ${notification.importance}
+        Time: ${new Date(notification.timestamp).toLocaleString()}
+        Event ID: ${notification.event_data?.event_id || 'N/A'}
+    `;
+    
+    alert(details);
+}
+
+// View event details (same as timeline event viewer)
+function viewEventDetails(eventId) {
+    if (!eventId) return;
+    
+    // Find the event in timeline events
+    const event = timelineEvents.find(e => e.event_id === eventId);
+    if (event) {
+        showTimelineEventModal(event);
+    } else {
+        showToast('Event details not available', 'warning');
+    }
+}
+
+// Utility function to get time ago
+function getTimeAgo(date) {
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) {
+        return `${diffInSeconds}s ago`;
+    } else if (diffInSeconds < 3600) {
+        return `${Math.floor(diffInSeconds / 60)}m ago`;
+    } else if (diffInSeconds < 86400) {
+        return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    } else {
+        return `${Math.floor(diffInSeconds / 86400)}d ago`;
     }
 }

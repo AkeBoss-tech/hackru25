@@ -810,6 +810,140 @@ def clear_vector_database():
         return jsonify({'error': str(e)}), 500
 
 
+# Notification System API Endpoints
+@app.route('/api/notifications')
+def get_notifications():
+    """Get recent notifications."""
+    try:
+        from backend.notification_manager import get_notification_manager, NotificationImportance
+        
+        notification_manager = get_notification_manager()
+        
+        # Get query parameters
+        limit = int(request.args.get('limit', 10))
+        importance_filter = request.args.get('importance')
+        
+        # Parse importance filter
+        importance = None
+        if importance_filter:
+            try:
+                importance = NotificationImportance(importance_filter)
+            except ValueError:
+                return jsonify({'error': f'Invalid importance level: {importance_filter}'}), 400
+        
+        notifications = notification_manager.get_recent_notifications(limit, importance)
+        
+        # Convert to JSON-serializable format
+        notifications_data = []
+        for notif in notifications:
+            notifications_data.append({
+                'id': notif.id,
+                'timestamp': notif.timestamp.isoformat(),
+                'importance': notif.importance.value,
+                'title': notif.title,
+                'message': notif.message,
+                'event_data': notif.event_data,
+                'gemini_report': notif.gemini_report,
+                'dismissed': notif.dismissed
+            })
+        
+        return jsonify({
+            'notifications': notifications_data,
+            'count': len(notifications_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting notifications: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notifications/<notification_id>/dismiss', methods=['POST'])
+def dismiss_notification(notification_id):
+    """Dismiss a notification."""
+    try:
+        from backend.notification_manager import get_notification_manager
+        
+        notification_manager = get_notification_manager()
+        notification_manager.dismiss_notification(notification_id)
+        
+        return jsonify({
+            'status': 'dismissed',
+            'message': f'Notification {notification_id} dismissed'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error dismissing notification: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notifications/stats')
+def get_notification_stats():
+    """Get notification statistics."""
+    try:
+        from backend.notification_manager import get_notification_manager
+        
+        notification_manager = get_notification_manager()
+        stats = notification_manager.get_notification_stats()
+        
+        return jsonify(stats)
+        
+    except Exception as e:
+        logger.error(f"Error getting notification stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notifications/clear', methods=['POST'])
+def clear_notifications():
+    """Clear notification history."""
+    try:
+        from backend.notification_manager import get_notification_manager
+        
+        notification_manager = get_notification_manager()
+        notification_manager.clear_history()
+        
+        return jsonify({
+            'status': 'cleared',
+            'message': 'Notification history cleared'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error clearing notifications: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Initialize notification system callback
+def setup_notification_callbacks():
+    """Setup notification callbacks for real-time updates."""
+    try:
+        from backend.notification_manager import get_notification_manager
+        
+        def on_notification(notification):
+            """Callback for new notifications - broadcast to all clients."""
+            try:
+                notification_data = {
+                    'id': notification.id,
+                    'timestamp': notification.timestamp.isoformat(),
+                    'importance': notification.importance.value,
+                    'title': notification.title,
+                    'message': notification.message,
+                    'event_data': notification.event_data,
+                    'gemini_report': notification.gemini_report
+                }
+                
+                # Broadcast to all connected clients
+                socketio.emit('new_notification', notification_data)
+                logger.info(f"Broadcasted notification: {notification.title}")
+                
+            except Exception as e:
+                logger.error(f"Error broadcasting notification: {e}")
+        
+        # Register callback
+        notification_manager = get_notification_manager()
+        notification_manager.add_notification_callback(on_notification)
+        logger.info("Notification callbacks setup complete")
+        
+    except Exception as e:
+        logger.error(f"Error setting up notification callbacks: {e}")
 
 
 @socketio.on('connect')
@@ -837,6 +971,9 @@ if __name__ == '__main__':
     if not web_processor.initialize():
         logger.error("Failed to initialize video processor")
         sys.exit(1)
+    
+    # Setup notification system
+    setup_notification_callbacks()
     
     # Start Flask-SocketIO app
     socketio.run(app, debug=True, host='0.0.0.0', port=5002, allow_unsafe_werkzeug=True)
