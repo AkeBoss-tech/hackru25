@@ -7,6 +7,7 @@ Simple version to test camera functionality with improved detection
 import cv2
 import numpy as np
 import time
+import os
 from improved_image_matcher import ImprovedImageMatcher
 
 def test_camera():
@@ -37,6 +38,7 @@ def run_simple_detection():
     print("  - Press 's' to take screenshot")
     print("  - Press SPACE to pause/resume")
     print("  - Press 'd' to detect on current frame")
+    print("  - Press 'r' to record person image")
     
     # Initialize detector
     try:
@@ -102,7 +104,7 @@ def run_simple_detection():
                             cv2.rectangle(display_frame, (x, y), (x + w, y + h), color, 3)
                 
                 # Add instructions
-                cv2.putText(display_frame, "Press 'd' to detect", 
+                cv2.putText(display_frame, "Press 'd' to detect, 'r' to record", 
                            (10, display_frame.shape[0] - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 cv2.putText(display_frame, "Press 'q' to quit, 's' for screenshot", 
                            (10, display_frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
@@ -155,6 +157,27 @@ def run_simple_detection():
                                    (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
                 else:
                     print("⏳ Please wait before next detection...")
+            elif key == ord('r'):
+                # Record person image
+                try:
+                    # Create person_images directory if it doesn't exist
+                    os.makedirs("person_images", exist_ok=True)
+                    
+                    timestamp = time.strftime("%Y%m%d_%H%M%S")
+                    filename = f"person_images/person_capture_{timestamp}.jpg"
+                    cv2.imwrite(filename, frame)  # Save the original frame without overlays
+                    print(f"👤 Person image recorded: {filename}")
+                    
+                    # Visual feedback - flash green border
+                    feedback_frame = frame.copy()
+                    cv2.rectangle(feedback_frame, (0, 0), 
+                                (feedback_frame.shape[1]-1, feedback_frame.shape[0]-1), 
+                                (0, 255, 0), 10)
+                    cv2.imshow('Quick Camera Test - Improved Detection', feedback_frame)
+                    cv2.waitKey(100)  # Show feedback for 100ms
+                    
+                except Exception as e:
+                    print(f"❌ Failed to record person image: {e}")
     
     except KeyboardInterrupt:
         print("\n🛑 Stopped by user")
