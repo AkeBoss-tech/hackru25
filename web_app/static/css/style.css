@@ -671,6 +671,88 @@ body {
     margin-top: 1rem;
 }
 
+/* Enhanced Statistics */
+.stat-item.enhanced {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-item.enhanced:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #007bff;
+}
+
+.stat-item.enhanced .stat-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #495057;
+    margin-bottom: 0.25rem;
+}
+
+.stat-item.enhanced .stat-label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.stat-item.enhanced .stat-change {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #28a745;
+    opacity: 0.8;
+}
+
+.stat-item.enhanced .stat-change.negative {
+    color: #dc3545;
+}
+
+.stat-item.enhanced .stat-change.neutral {
+    color: #6c757d;
+}
+
+/* System Status Badges */
+.badge.bg-secondary {
+    background-color: #6c757d !important;
+}
+
+.badge.bg-success {
+    background-color: #28a745 !important;
+}
+
+.badge.bg-warning {
+    background-color: #ffc107 !important;
+    color: #212529 !important;
+}
+
+.badge.bg-danger {
+    background-color: #dc3545 !important;
+}
+
+/* Detection Entry Styling */
+.detection-entry {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    transition: all 0.3s ease;
+}
+
+.detection-entry:hover {
+    transform: translateX(2px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: #007bff;
+}
+
+.detection-entry .badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+
 /* Timeline Filter */
 .timeline-filter-group {
     margin-bottom: 1rem;
@@ -1156,5 +1238,159 @@ body {
     
     .notification-stats {
         background-color: #4a5568;
+    }
+}
+
+/* AI Summary and Snapshot Styles */
+.ai-summary-content {
+    padding: 1rem 0;
+}
+
+.security-level-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background-color: rgba(0, 123, 255, 0.1);
+    border: 2px solid rgba(0, 123, 255, 0.3);
+}
+
+.security-level-indicator.text-success {
+    background-color: rgba(40, 167, 69, 0.1);
+    border-color: rgba(40, 167, 69, 0.3);
+}
+
+.security-level-indicator.text-warning {
+    background-color: rgba(255, 193, 7, 0.1);
+    border-color: rgba(255, 193, 7, 0.3);
+}
+
+.security-level-indicator.text-danger {
+    background-color: rgba(220, 53, 69, 0.1);
+    border-color: rgba(220, 53, 69, 0.3);
+}
+
+.security-summary-text {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.security-event-item {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    transition: all 0.3s ease;
+}
+
+.security-event-item:hover {
+    transform: translateX(2px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: #007bff;
+}
+
+.recent-events-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Snapshot Styles */
+.snapshots-container {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.snapshot-item {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.snapshot-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #007bff;
+}
+
+.snapshot-description {
+    flex-grow: 1;
+}
+
+.snapshot-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.snapshot-thumbnail {
+    border: 2px solid #e9ecef;
+    transition: all 0.3s ease;
+    border-radius: 8px;
+}
+
+.snapshot-thumbnail:hover {
+    border-color: #007bff;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Responsive adjustments for AI summary */
+@media (max-width: 768px) {
+    .security-level-indicator {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .security-level-indicator i {
+        font-size: 1.5rem !important;
+    }
+    
+    .snapshot-item .row {
+        flex-direction: column;
+    }
+    
+    .snapshot-item .col-md-8,
+    .snapshot-item .col-md-4 {
+        flex: none;
+        max-width: 100%;
+    }
+    
+    .snapshot-item .col-md-4 {
+        margin-top: 1rem;
+    }
+    
+    .snapshot-meta {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* Dark mode support for AI summary */
+@media (prefers-color-scheme: dark) {
+    .security-summary-text {
+        background-color: #4a5568;
+        color: #e9ecef;
+        border-left-color: #007bff;
+    }
+    
+    .security-event-item {
+        background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+        border-color: #718096;
+        color: #e9ecef;
+    }
+    
+    .snapshot-item {
+        background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+        border-color: #718096;
+        color: #e9ecef;
+    }
+    
+    .snapshot-thumbnail {
+        border-color: #718096;
     }
 }

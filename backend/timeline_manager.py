@@ -16,6 +16,13 @@ import threading
 import time
 from typing import Set
 
+# Import snapshot analysis service
+try:
+    from .snapshot_analysis_service import get_snapshot_analysis_service
+except ImportError:
+    # Fallback if not available
+    get_snapshot_analysis_service = None
+
 
 class TimelineEvent:
     """Represents a timeline event with metadata and snapshot."""
@@ -135,6 +142,15 @@ class TimelineManager:
             'unique_objects_count': 0,  # Track count of unique objects
             'object_counts': {}  # Track counts by class
         }
+        
+        # Initialize snapshot analysis service
+        self.snapshot_analysis_service = None
+        if get_snapshot_analysis_service:
+            try:
+                self.snapshot_analysis_service = get_snapshot_analysis_service()
+                logger.info("✅ Snapshot analysis service initialized")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not initialize snapshot analysis service: {e}")
         
         # Internal tracking (not serialized)
         self._unique_objects = set()  # Track unique object IDs to avoid double counting
@@ -538,6 +554,29 @@ class TimelineManager:
             
             # Save annotated snapshot (whole frame with annotations)
             cv2.imwrite(str(annotated_path), annotated_frame)
+            
+            # Analyze snapshot for sex offenders and family members
+            if self.snapshot_analysis_service:
+                try:
+                    analysis_result = self.snapshot_analysis_service.analyze_snapshot(
+                        str(annotated_path), 
+                        frame
+                    )
+                    
+                    # Store analysis results in event metadata
+                    if hasattr(self, '_current_event'):
+                        if not hasattr(self._current_event, 'analysis_results'):
+                            self._current_event.analysis_results = {}
+                        self._current_event.analysis_results = analysis_result
+                    
+                    # Log analysis results
+                    if analysis_result.get('sex_offenders'):
+                        logger.warning(f"🚨 SEX OFFENDER DETECTED in snapshot {event_id}: {len(analysis_result['sex_offenders'])} matches")
+                    if analysis_result.get('family_members'):
+                        logger.info(f"👨‍👩‍👧‍👦 FAMILY MEMBER detected in snapshot {event_id}: {len(analysis_result['family_members'])} matches")
+                        
+                except Exception as e:
+                    logger.error(f"Error analyzing snapshot: {e}")
             
             # Return the annotated path as the primary snapshot
             return str(annotated_path)

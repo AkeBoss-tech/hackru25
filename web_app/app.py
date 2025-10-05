@@ -30,6 +30,8 @@ try:
     from backend.camera_detection_service import get_camera_detection_service
     from backend.improved_image_matcher import get_improved_matcher
     from backend.distributed_camera_manager import get_distributed_camera_manager
+    from backend.continuous_sex_offender_detector import get_continuous_sex_offender_detector
+    from backend.snapshot_analysis_service import get_snapshot_analysis_service
 except ImportError as e:
     print(f"Error importing backend modules: {e}")
     print("Make sure you're running from the project root directory")
@@ -238,6 +240,12 @@ camera_detection_service = get_camera_detection_service()
 # Initialize distributed camera manager
 distributed_manager = get_distributed_camera_manager()
 
+# Initialize continuous sex offender detector
+continuous_sex_offender_detector = get_continuous_sex_offender_detector()
+
+# Initialize snapshot analysis service
+snapshot_analysis_service = get_snapshot_analysis_service()
+
 # Setup camera detection callbacks for real-time updates
 def setup_camera_detection_callbacks():
     """Setup callbacks for camera detection events."""
@@ -281,6 +289,51 @@ def setup_camera_detection_callbacks():
 
 # Setup callbacks
 setup_camera_detection_callbacks()
+
+# Setup continuous sex offender detector callbacks for real-time updates
+def setup_sex_offender_detector_callbacks():
+    """Setup callbacks for continuous sex offender detection events."""
+    
+    def on_sex_offender_detection(results):
+        """Callback for sex offender detection events."""
+        try:
+            detection_data = {
+                'timestamp': datetime.now().isoformat(),
+                'results': results,
+                'count': len(results),
+                'detection_type': 'sex_offender'
+            }
+            socketio.emit('sex_offender_detection_update', detection_data)
+            logger.warning(f"🚨 Sex offender detection: {len(results)} matches found")
+        except Exception as e:
+            logger.error(f"Error emitting sex offender detection update: {e}")
+    
+    def on_sex_offender_alert(alert_data):
+        """Callback for high-confidence sex offender alerts."""
+        try:
+            alert_data['timestamp'] = datetime.now().isoformat()
+            socketio.emit('sex_offender_alert', alert_data)
+            logger.error(f"🚨 SEX OFFENDER ALERT: {alert_data.get('severity', 'UNKNOWN')} - {alert_data.get('offender_info', {}).get('name', 'Unknown')}")
+        except Exception as e:
+            logger.error(f"Error emitting sex offender alert: {e}")
+    
+    def on_sex_offender_status_change(status_data):
+        """Callback for sex offender detection status changes."""
+        try:
+            socketio.emit('sex_offender_detection_status', status_data)
+            logger.info(f"Sex offender detection status: {status_data.get('status', 'UNKNOWN')}")
+        except Exception as e:
+            logger.error(f"Error emitting sex offender status change: {e}")
+    
+    # Register callbacks
+    continuous_sex_offender_detector.add_detection_callback(on_sex_offender_detection)
+    continuous_sex_offender_detector.add_alert_callback(on_sex_offender_alert)
+    continuous_sex_offender_detector.add_status_callback(on_sex_offender_status_change)
+    
+    logger.info("Sex offender detector callbacks setup complete")
+
+# Setup sex offender detector callbacks
+setup_sex_offender_detector_callbacks()
 
 # Setup distributed camera manager callbacks
 def setup_distributed_manager_callbacks():
@@ -947,6 +1000,82 @@ def clear_vector_database():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/ai/summary')
+def get_ai_security_summary():
+    """Get AI-generated summary of recent security events and snapshots."""
+    try:
+        # Get recent timeline events with snapshots
+        if not web_processor.processor or not web_processor.processor.get_timeline_manager():
+            return jsonify({
+                'summary': 'No security data available. Start video processing to begin monitoring.',
+                'recent_events': [],
+                'security_level': 'normal',
+                'last_updated': datetime.now().isoformat()
+            })
+        
+        timeline_manager = web_processor.processor.get_timeline_manager()
+        recent_events = timeline_manager.get_events(limit=20)
+        
+        # Filter events with snapshots and generate descriptions
+        snapshot_events = []
+        for event in recent_events:
+            if event.get('snapshot_path'):
+                # Generate description for each snapshot event
+                objects = event.get('objects', [])
+                object_descriptions = []
+                for obj in objects:
+                    object_descriptions.append(f"{obj['class_name']} (confidence: {obj['confidence']:.2f})")
+                
+                event_description = {
+                    'event_id': event['event_id'],
+                    'timestamp': event['timestamp'],
+                    'source': event['video_source'],
+                    'objects_detected': object_descriptions,
+                    'summary': f"Detected {len(objects)} objects: {', '.join([obj['class_name'] for obj in objects])}",
+                    'snapshot_path': event['snapshot_path'],
+                    'confidence_scores': [obj['confidence'] for obj in objects] if objects else []
+                }
+                snapshot_events.append(event_description)
+        
+        # Generate overall security summary
+        total_events = len(snapshot_events)
+        if total_events == 0:
+            summary = "No security events detected. All systems normal."
+            security_level = "normal"
+        else:
+            recent_count = len([e for e in snapshot_events if 
+                              (datetime.now() - datetime.fromisoformat(e['timestamp'].replace('Z', '+00:00'))).total_seconds() < 3600])
+            
+            # Analyze security level based on recent activity
+            if recent_count > 10:
+                security_level = "high_activity"
+                summary = f"High security activity detected. {recent_count} events in the last hour. Monitor closely."
+            elif recent_count > 5:
+                security_level = "elevated"
+                summary = f"Elevated security activity. {recent_count} events in the last hour."
+            else:
+                security_level = "normal"
+                summary = f"Normal security monitoring. {total_events} total events detected."
+        
+        return jsonify({
+            'summary': summary,
+            'security_level': security_level,
+            'recent_events': snapshot_events[:10],  # Return top 10 most recent
+            'total_events': total_events,
+            'last_updated': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating AI security summary: {e}")
+        return jsonify({
+            'summary': 'Unable to generate security summary at this time.',
+            'security_level': 'unknown',
+            'recent_events': [],
+            'error': str(e),
+            'last_updated': datetime.now().isoformat()
+        }), 500
+
+
 # Notification System API Endpoints
 @app.route('/api/notifications')
 def get_notifications():
@@ -1424,6 +1553,358 @@ def get_detection_database_stats():
         return jsonify(stats)
     except Exception as e:
         logger.error(f"Error getting database stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Continuous Sex Offender Detection API Endpoints
+@app.route('/api/sex_offender_detection/start', methods=['POST'])
+def start_sex_offender_detection():
+    """Start continuous sex offender detection."""
+    try:
+        data = request.get_json() or {}
+        camera_index = data.get('camera_index', 0)
+        detection_interval = data.get('detection_interval', 2.0)
+        confidence_threshold = data.get('confidence_threshold', 0.3)
+        
+        # Configure service
+        continuous_sex_offender_detector.set_detection_interval(detection_interval)
+        continuous_sex_offender_detector.set_confidence_threshold(confidence_threshold)
+        
+        # Start detection
+        if continuous_sex_offender_detector.start_detection(camera_index):
+            return jsonify({
+                'status': 'started',
+                'camera_index': camera_index,
+                'detection_interval': detection_interval,
+                'confidence_threshold': confidence_threshold,
+                'message': 'Continuous sex offender detection started'
+            })
+        else:
+            return jsonify({'error': 'Failed to start sex offender detection'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error starting sex offender detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sex_offender_detection/stop', methods=['POST'])
+def stop_sex_offender_detection():
+    """Stop continuous sex offender detection."""
+    try:
+        continuous_sex_offender_detector.stop_detection()
+        return jsonify({'status': 'stopped', 'message': 'Sex offender detection stopped'})
+    except Exception as e:
+        logger.error(f"Error stopping sex offender detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sex_offender_detection/pause', methods=['POST'])
+def pause_sex_offender_detection():
+    """Pause continuous sex offender detection."""
+    try:
+        continuous_sex_offender_detector.pause_detection()
+        return jsonify({'status': 'paused', 'message': 'Sex offender detection paused'})
+    except Exception as e:
+        logger.error(f"Error pausing sex offender detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sex_offender_detection/resume', methods=['POST'])
+def resume_sex_offender_detection():
+    """Resume continuous sex offender detection."""
+    try:
+        continuous_sex_offender_detector.resume_detection()
+        return jsonify({'status': 'resumed', 'message': 'Sex offender detection resumed'})
+    except Exception as e:
+        logger.error(f"Error resuming sex offender detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sex_offender_detection/status')
+def get_sex_offender_detection_status():
+    """Get sex offender detection service status."""
+    try:
+        status = continuous_sex_offender_detector.get_status()
+        return jsonify(status)
+    except Exception as e:
+        logger.error(f"Error getting sex offender detection status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sex_offender_detection/stats')
+def get_sex_offender_detection_stats():
+    """Get sex offender detection statistics."""
+    try:
+        stats = continuous_sex_offender_detector.get_detection_stats()
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"Error getting sex offender detection stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sex_offender_detection/recent_detections')
+def get_recent_sex_offender_detections():
+    """Get recent sex offender detection results."""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        detections = continuous_sex_offender_detector.get_recent_detections(limit)
+        return jsonify({
+            'detections': detections,
+            'count': len(detections)
+        })
+    except Exception as e:
+        logger.error(f"Error getting recent sex offender detections: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sex_offender_detection/test_camera/<int:camera_index>')
+def test_sex_offender_detection_camera(camera_index):
+    """Test camera for sex offender detection capabilities."""
+    try:
+        test_result = continuous_sex_offender_detector.test_camera(camera_index)
+        return jsonify(test_result)
+    except Exception as e:
+        logger.error(f"Error testing camera {camera_index} for sex offender detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sex_offender_detection/discover_cameras')
+def discover_cameras_for_sex_offender_detection():
+    """Discover cameras available for sex offender detection."""
+    try:
+        max_cameras = request.args.get('max_cameras', 5, type=int)
+        cameras = continuous_sex_offender_detector.discover_cameras(max_cameras)
+        return jsonify({
+            'cameras': cameras,
+            'count': len(cameras)
+        })
+    except Exception as e:
+        logger.error(f"Error discovering cameras for sex offender detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sex_offender_detection/detect_image', methods=['POST'])
+def detect_sex_offenders_in_image():
+    """Detect sex offenders in an uploaded image."""
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'No image file provided'}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if file:
+            # Secure filename and save
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"sex_offender_detection_{timestamp}_{filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # Get detection parameters
+            threshold = float(request.form.get('threshold', 0.3))
+            
+            # Run sex offender detection
+            results = continuous_sex_offender_detector.detect_in_image(filepath, threshold=threshold)
+            
+            # Clean up uploaded file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            
+            return jsonify({
+                'results': results,
+                'count': len(results),
+                'threshold': threshold,
+                'message': f'Found {len(results)} potential sex offender matches'
+            })
+        else:
+            return jsonify({'error': 'Invalid file'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error detecting sex offenders in image: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Snapshot Analysis API Endpoints
+@app.route('/api/snapshot/analyze', methods=['POST'])
+def analyze_snapshot():
+    """Analyze a snapshot for sex offenders and family members."""
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'No image file provided'}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if file:
+            # Secure filename and save
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"snapshot_analysis_{timestamp}_{filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # Run snapshot analysis
+            analysis_result = snapshot_analysis_service.analyze_snapshot(filepath)
+            
+            # Clean up uploaded file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            
+            return jsonify(analysis_result)
+        else:
+            return jsonify({'error': 'Invalid file'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error analyzing snapshot: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/snapshot/capture_family_photo', methods=['POST'])
+def capture_family_photo():
+    """Capture current frame for family member enrollment."""
+    try:
+        data = request.get_json() or {}
+        name = data.get('name')
+        
+        if not name:
+            return jsonify({'error': 'Family member name required'}), 400
+        
+        # Get current frame from the video processor
+        # This would need to be implemented based on your current frame capture mechanism
+        # For now, we'll return an error indicating this needs to be implemented
+        return jsonify({
+            'error': 'Frame capture not implemented yet',
+            'message': 'This feature requires integration with the current video processor'
+        }), 501
+            
+    except Exception as e:
+        logger.error(f"Error capturing family photo: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Family Member Management API Endpoints
+@app.route('/api/family/analysis/members')
+def get_family_members_analysis():
+    """Get all family members from snapshot analysis service."""
+    try:
+        family_members = snapshot_analysis_service.get_family_members()
+        stats = snapshot_analysis_service.get_family_member_stats()
+        
+        return jsonify({
+            'family_members': family_members,
+            'stats': stats,
+            'count': len(family_members)
+        })
+    except Exception as e:
+        logger.error(f"Error getting family members: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/family/analysis/members', methods=['POST'])
+def add_family_member_analysis():
+    """Add a family member with photo."""
+    try:
+        if 'photo' not in request.files:
+            return jsonify({'error': 'No photo file provided'}), 400
+        
+        file = request.files['photo']
+        name = request.form.get('name')
+        
+        if not name:
+            return jsonify({'error': 'Name required'}), 400
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if file:
+            # Secure filename and save
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"family_{name}_{timestamp}_{filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # Add to family members
+            success = snapshot_analysis_service.add_family_member(name, filepath)
+            
+            # Clean up uploaded file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            
+            if success:
+                return jsonify({
+                    'status': 'added',
+                    'name': name,
+                    'message': f'Family member {name} added successfully'
+                })
+            else:
+                return jsonify({'error': 'Failed to add family member'}), 500
+        else:
+            return jsonify({'error': 'Invalid file'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error adding family member: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/family/analysis/members/<name>', methods=['DELETE'])
+def remove_family_member_analysis(name):
+    """Remove a family member."""
+    try:
+        success = snapshot_analysis_service.remove_family_member(name)
+        
+        if success:
+            return jsonify({
+                'status': 'removed',
+                'name': name,
+                'message': f'Family member {name} removed successfully'
+            })
+        else:
+            return jsonify({'error': 'Family member not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error removing family member: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/snapshot/analysis/stats')
+def get_snapshot_analysis_stats():
+    """Get snapshot analysis statistics."""
+    try:
+        stats = snapshot_analysis_service.get_analysis_stats()
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"Error getting snapshot analysis stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/snapshot/analysis/settings', methods=['POST'])
+def update_snapshot_analysis_settings():
+    """Update snapshot analysis settings."""
+    try:
+        data = request.get_json() or {}
+        
+        sex_offender_threshold = data.get('sex_offender_threshold')
+        family_member_threshold = data.get('family_member_threshold')
+        
+        if sex_offender_threshold is not None:
+            snapshot_analysis_service.set_sex_offender_threshold(sex_offender_threshold)
+        
+        if family_member_threshold is not None:
+            snapshot_analysis_service.set_family_member_threshold(family_member_threshold)
+        
+        return jsonify({
+            'status': 'updated',
+            'settings': {
+                'sex_offender_threshold': sex_offender_threshold,
+                'family_member_threshold': family_member_threshold
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error updating snapshot analysis settings: {e}")
         return jsonify({'error': str(e)}), 500
 
 

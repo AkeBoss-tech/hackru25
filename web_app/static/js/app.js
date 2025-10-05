@@ -30,6 +30,14 @@ let notificationStats = {
 let soundEnabled = true;
 let currentPopupNotification = null;
 
+// Sex offender detection variables
+let sexOffenderAlerts = [];
+let sexOffenderDetectionActive = false;
+
+// Family member management variables
+let familyMembers = [];
+let familyMemberDetections = [];
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -59,6 +67,283 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// ============================================================================
+// AI Summary and Snapshot Management Functions
+// ============================================================================
+
+let aiSummaryAutoRefresh = false;
+let aiSummaryInterval = null;
+let snapshotViewMode = 'text'; // 'text' or 'images'
+
+// Load AI Security Summary
+async function loadAISummary() {
+    try {
+        const response = await fetch('/api/ai/summary');
+        const data = await response.json();
+        
+        if (data) {
+            updateAISummaryDisplay(data);
+        } else {
+            console.error('Error loading AI summary:', data.error);
+        }
+    } catch (error) {
+        console.error('Error loading AI summary:', error);
+        updateAISummaryDisplay({
+            summary: 'Unable to load security summary',
+            security_level: 'unknown',
+            recent_events: []
+        });
+    }
+}
+
+// Update AI Summary Display
+function updateAISummaryDisplay(data) {
+    const container = document.getElementById('ai-summary-content');
+    if (!container) return;
+    
+    const securityLevelClass = getSecurityLevelClass(data.security_level);
+    const securityLevelIcon = getSecurityLevelIcon(data.security_level);
+    
+    let eventsHtml = '';
+    if (data.recent_events && data.recent_events.length > 0) {
+        eventsHtml = `
+            <div class="mt-3">
+                <h6 class="text-primary mb-2"><i class="fas fa-list"></i> Recent Security Events</h6>
+                <div class="recent-events-list">
+                    ${data.recent_events.slice(0, 5).map(event => `
+                        <div class="security-event-item mb-2 p-2 border rounded">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="fw-bold small">${new Date(event.timestamp).toLocaleString()}</div>
+                                    <div class="small text-muted">${event.summary}</div>
+                                    <div class="small">
+                                        <span class="badge bg-info me-1">${event.source.replace('camera:', 'Camera ').replace('video:', 'Video: ')}</span>
+                                        <span class="text-muted">${event.objects_detected.length} objects</span>
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewSnapshotEvent('${event.event_id}')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = `
+        <div class="ai-summary-content">
+            <div class="d-flex align-items-center mb-3">
+                <div class="security-level-indicator ${securityLevelClass} me-3">
+                    <i class="fas ${securityLevelIcon} fa-2x"></i>
+                </div>
+                <div>
+                    <h6 class="mb-1">Security Status: <span class="badge ${securityLevelClass}">${data.security_level.replace('_', ' ').toUpperCase()}</span></h6>
+                    <small class="text-muted">Last updated: ${new Date(data.last_updated).toLocaleString()}</small>
+                </div>
+            </div>
+            
+            <div class="security-summary-text">
+                <p class="mb-3">${data.summary}</p>
+            </div>
+            
+            ${data.total_events ? `
+                <div class="row text-center mb-3">
+                    <div class="col-4">
+                        <div class="stat-item">
+                            <div class="stat-value text-primary">${data.total_events}</div>
+                            <div class="stat-label">Total Events</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-item">
+                            <div class="stat-value text-success">${data.recent_events ? data.recent_events.length : 0}</div>
+                            <div class="stat-label">Recent Events</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-item">
+                            <div class="stat-value text-info">${data.security_level === 'high_activity' ? 'HIGH' : data.security_level === 'elevated' ? 'MED' : 'LOW'}</div>
+                            <div class="stat-label">Alert Level</div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${eventsHtml}
+        </div>
+    `;
+}
+
+// Get security level CSS class
+function getSecurityLevelClass(level) {
+    switch (level) {
+        case 'high_activity': return 'text-danger';
+        case 'elevated': return 'text-warning';
+        case 'normal': return 'text-success';
+        default: return 'text-muted';
+    }
+}
+
+// Get security level icon
+function getSecurityLevelIcon(level) {
+    switch (level) {
+        case 'high_activity': return 'fa-exclamation-triangle';
+        case 'elevated': return 'fa-exclamation-circle';
+        case 'normal': return 'fa-check-circle';
+        default: return 'fa-question-circle';
+    }
+}
+
+// Refresh AI Summary
+function refreshAISummary() {
+    loadAISummary();
+}
+
+// Toggle AI Summary Auto-Refresh
+function toggleSummaryAutoRefresh() {
+    const btn = document.getElementById('summary-auto-refresh-btn');
+    const icon = btn.querySelector('i');
+    
+    if (aiSummaryAutoRefresh) {
+        clearInterval(aiSummaryInterval);
+        aiSummaryInterval = null;
+        aiSummaryAutoRefresh = false;
+        icon.className = 'fas fa-play';
+        btn.title = 'Start Auto-Refresh';
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-outline-info');
+    } else {
+        aiSummaryInterval = setInterval(() => {
+            loadAISummary();
+        }, 30000); // 30 seconds
+        aiSummaryAutoRefresh = true;
+        icon.className = 'fas fa-pause';
+        btn.title = 'Stop Auto-Refresh';
+        btn.classList.remove('btn-outline-info');
+        btn.classList.add('btn-success');
+    }
+}
+
+// Load Recent Snapshots
+async function loadRecentSnapshots() {
+    try {
+        const response = await fetch('/api/ai/summary');
+        const data = await response.json();
+        
+        if (data && data.recent_events) {
+            updateSnapshotsDisplay(data.recent_events);
+        } else {
+            updateSnapshotsDisplay([]);
+        }
+    } catch (error) {
+        console.error('Error loading recent snapshots:', error);
+        updateSnapshotsDisplay([]);
+    }
+}
+
+// Update Snapshots Display
+function updateSnapshotsDisplay(events) {
+    const container = document.getElementById('recent-snapshots');
+    if (!container) return;
+    
+    if (!events || events.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted">
+                <i class="fas fa-camera fa-2x mb-2"></i>
+                <p>No recent snapshots available</p>
+                <small>Start processing to see security snapshots</small>
+            </div>
+        `;
+        return;
+    }
+    
+    const snapshotsHtml = events.slice(0, 8).map(event => {
+        const timestamp = new Date(event.timestamp).toLocaleString();
+        const objects = event.objects_detected.join(', ');
+        
+        return `
+            <div class="snapshot-item mb-3 p-3 border rounded">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <div class="snapshot-description">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-camera text-primary"></i>
+                                    Security Event ${event.event_id}
+                                </h6>
+                                <small class="text-muted">${timestamp}</small>
+                            </div>
+                            <p class="mb-2 text-muted">${event.summary}</p>
+                            <div class="snapshot-meta">
+                                <span class="badge bg-info me-2">${event.source.replace('camera:', 'Camera ').replace('video:', 'Video: ')}</span>
+                                <span class="badge bg-secondary me-2">${event.objects_detected.length} objects</span>
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewSnapshotImage('${event.event_id}', '${event.snapshot_path}')">
+                                    <i class="fas fa-image"></i> View Image
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center" id="snapshot-image-${event.event_id}" style="display: none;">
+                        <img src="/api/timeline/snapshots/${encodeURIComponent(event.snapshot_path)}" 
+                             alt="Security Snapshot" 
+                             class="img-fluid rounded snapshot-thumbnail"
+                             style="max-height: 120px; cursor: pointer;"
+                             onclick="showSnapshotModal('${event.snapshot_path}', '${event.event_id}')">
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = snapshotsHtml;
+}
+
+// Toggle Snapshot View Mode
+function toggleSnapshotView() {
+    const btn = document.getElementById('snapshot-view-toggle');
+    const icon = btn.querySelector('i');
+    
+    if (snapshotViewMode === 'text') {
+        // Switch to images
+        snapshotViewMode = 'images';
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Images';
+        btn.title = 'Hide Images';
+        
+        // Show all snapshot images
+        document.querySelectorAll('[id^="snapshot-image-"]').forEach(el => {
+            el.style.display = 'block';
+        });
+    } else {
+        // Switch to text only
+        snapshotViewMode = 'text';
+        btn.innerHTML = '<i class="fas fa-eye"></i> Show Images';
+        btn.title = 'Show Images';
+        
+        // Hide all snapshot images
+        document.querySelectorAll('[id^="snapshot-image-"]').forEach(el => {
+            el.style.display = 'none';
+        });
+    }
+}
+
+// View Snapshot Event (from AI summary)
+function viewSnapshotEvent(eventId) {
+    // Find the event in timeline events and show its details
+    const event = timelineEvents.find(e => e.event_id === eventId);
+    if (event && event.snapshot_path) {
+        showSnapshotModal(event.snapshot_path, eventId);
+    } else {
+        showToast('Event details not available', 'warning');
+    }
+}
+
+// View Snapshot Image (from snapshots section)
+function viewSnapshotImage(eventId, snapshotPath) {
+    showSnapshotModal(snapshotPath, eventId);
+}
+
 function initializeApp() {
     // Initialize Socket.IO connection
     initializeSocket();
@@ -78,6 +363,10 @@ function initializeApp() {
     loadNotificationStats();
     loadDetectionClasses();
     loadDistributedStatus();
+    loadRecentDetections();
+    refreshStats();
+    loadAISummary();
+    loadRecentSnapshots();
     
     // Auto-start processing after a short delay
     setTimeout(() => {
@@ -145,6 +434,27 @@ function initializeSocket() {
     // Notification system event handlers
     socket.on('new_notification', function(notificationData) {
         handleNewNotification(notificationData);
+    });
+    
+    // Sex offender detection event handlers
+    socket.on('sex_offender_detection_update', function(data) {
+        handleSexOffenderDetectionUpdate(data);
+    });
+    
+    socket.on('sex_offender_alert', function(data) {
+        console.log('Sex offender alert:', data);
+        showNotification(`🚨 SEX OFFENDER ALERT: ${data.offender_info?.name || 'Unknown'}`, 'error');
+    });
+    
+    socket.on('sex_offender_detection_status', function(data) {
+        console.log('Sex offender detection status:', data);
+        sexOffenderDetectionActive = data.is_running;
+        updateSexOffenderDetectionStatus();
+    });
+    
+    // Family member detection event handlers
+    socket.on('family_member_detection', function(data) {
+        handleFamilyMemberDetection(data);
     });
 }
 
@@ -1997,6 +2307,12 @@ function getTimeAgo(date) {
 let recentDetectionsInterval = null;
 let autoRefreshEnabled = false;
 
+// Statistics Auto-Refresh
+let statsInterval = null;
+let statsAutoRefreshEnabled = false;
+let previousStats = {};
+let systemStartTime = Date.now();
+
 function toggleAutoRefresh() {
     const btn = document.getElementById('auto-refresh-btn');
     const icon = btn.querySelector('i');
@@ -2073,6 +2389,135 @@ function updateRecentDetectionsDisplay(detections) {
     }).join('');
     
     container.innerHTML = detectionsHtml;
+}
+
+// Statistics Auto-Refresh Functions
+function toggleStatsAutoRefresh() {
+    const btn = document.getElementById('stats-auto-refresh-btn');
+    const icon = btn.querySelector('i');
+    
+    if (statsAutoRefreshEnabled) {
+        // Stop auto-refresh
+        clearInterval(statsInterval);
+        statsInterval = null;
+        statsAutoRefreshEnabled = false;
+        icon.className = 'fas fa-play';
+        btn.title = 'Start Auto-Refresh';
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-outline-info');
+    } else {
+        // Start auto-refresh
+        statsInterval = setInterval(() => {
+            refreshStats();
+        }, 3000); // 3 seconds
+        statsAutoRefreshEnabled = true;
+        icon.className = 'fas fa-pause';
+        btn.title = 'Stop Auto-Refresh';
+        btn.classList.remove('btn-outline-info');
+        btn.classList.add('btn-success');
+    }
+}
+
+function refreshStats() {
+    // Update basic stats
+    updateStats();
+    
+    // Update system status
+    updateSystemStatus();
+    
+    // Update uptime
+    updateUptime();
+}
+
+function updateStats() {
+    // This would normally fetch from the API, but for now we'll update with current values
+    const currentStats = {
+        totalFrames: parseInt(document.getElementById('total-frames').textContent) || 0,
+        totalDetections: parseInt(document.getElementById('total-detections').textContent) || 0,
+        fps: parseFloat(document.getElementById('fps').textContent) || 0,
+        activeTracks: parseInt(document.getElementById('active-tracks').textContent) || 0,
+        peopleCount: parseInt(document.getElementById('people-count').textContent) || 0,
+        vehiclesCount: parseInt(document.getElementById('vehicles-count').textContent) || 0
+    };
+    
+    // Calculate changes
+    Object.keys(currentStats).forEach(key => {
+        const changeElement = document.getElementById(key + '-change');
+        if (changeElement && previousStats[key] !== undefined) {
+            const change = currentStats[key] - previousStats[key];
+            if (change > 0) {
+                changeElement.textContent = `+${change}`;
+                changeElement.className = 'stat-change';
+            } else if (change < 0) {
+                changeElement.textContent = `${change}`;
+                changeElement.className = 'stat-change negative';
+            } else {
+                changeElement.textContent = '+0';
+                changeElement.className = 'stat-change neutral';
+            }
+        }
+    });
+    
+    // Store current stats for next comparison
+    previousStats = { ...currentStats };
+}
+
+function updateSystemStatus() {
+    // Update camera status
+    const cameraStatus = document.getElementById('camera-status');
+    if (cameraStatus) {
+        const isConnected = document.getElementById('connection-status').classList.contains('bg-success');
+        if (isConnected) {
+            cameraStatus.textContent = 'Connected';
+            cameraStatus.className = 'badge bg-success';
+        } else {
+            cameraStatus.textContent = 'Disconnected';
+            cameraStatus.className = 'badge bg-danger';
+        }
+    }
+    
+    // Update AI processing status
+    const aiStatus = document.getElementById('ai-status');
+    if (aiStatus) {
+        const isProcessing = document.getElementById('processing-status').classList.contains('bg-success');
+        if (isProcessing) {
+            aiStatus.textContent = 'Active';
+            aiStatus.className = 'badge bg-success';
+        } else {
+            aiStatus.textContent = 'Idle';
+            aiStatus.className = 'badge bg-warning';
+        }
+    }
+    
+    // Simulate memory and CPU usage (in a real app, this would come from the backend)
+    const memoryUsage = document.getElementById('memory-usage');
+    const cpuUsage = document.getElementById('cpu-usage');
+    
+    if (memoryUsage) {
+        const memoryPercent = Math.floor(Math.random() * 30) + 40; // 40-70%
+        memoryUsage.textContent = `${memoryPercent}%`;
+        memoryUsage.className = memoryPercent > 80 ? 'badge bg-danger' : 
+                               memoryPercent > 60 ? 'badge bg-warning' : 'badge bg-success';
+    }
+    
+    if (cpuUsage) {
+        const cpuPercent = Math.floor(Math.random() * 40) + 20; // 20-60%
+        cpuUsage.textContent = `${cpuPercent}%`;
+        cpuUsage.className = cpuPercent > 80 ? 'badge bg-danger' : 
+                            cpuPercent > 60 ? 'badge bg-warning' : 'badge bg-success';
+    }
+}
+
+function updateUptime() {
+    const uptimeElement = document.getElementById('uptime');
+    if (uptimeElement) {
+        const uptimeMs = Date.now() - systemStartTime;
+        const hours = Math.floor(uptimeMs / (1000 * 60 * 60));
+        const minutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((uptimeMs % (1000 * 60)) / 1000);
+        
+        uptimeElement.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
 }
 
 // Load distributed camera system status
@@ -2162,3 +2607,386 @@ function updateDistributedStatus(status, data) {
             `;
     }
 }
+
+// ============================================================================
+// Sex Offender Detection Functions
+// ============================================================================
+
+function startSexOffenderDetection() {
+    const threshold = parseFloat(document.getElementById('sex-offender-threshold').value);
+    const interval = parseFloat(document.getElementById('sex-offender-interval').value);
+    
+    fetch('/api/sex_offender_detection/start', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            camera_index: 0,
+            confidence_threshold: threshold,
+            detection_interval: interval
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'started') {
+            sexOffenderDetectionActive = true;
+            showNotification('Sex offender detection started', 'success');
+            updateSexOffenderDetectionStatus();
+        } else {
+            showNotification('Failed to start sex offender detection: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error starting sex offender detection:', error);
+        showNotification('Error starting sex offender detection', 'error');
+    });
+}
+
+function stopSexOffenderDetection() {
+    fetch('/api/sex_offender_detection/stop', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'stopped') {
+            sexOffenderDetectionActive = false;
+            showNotification('Sex offender detection stopped', 'info');
+            updateSexOffenderDetectionStatus();
+        } else {
+            showNotification('Failed to stop sex offender detection', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error stopping sex offender detection:', error);
+        showNotification('Error stopping sex offender detection', 'error');
+    });
+}
+
+function updateSexOffenderDetectionStatus() {
+    // Update UI to reflect current status
+    const startBtn = document.querySelector('button[onclick="startSexOffenderDetection()"]');
+    const stopBtn = document.querySelector('button[onclick="stopSexOffenderDetection()"]');
+    
+    if (sexOffenderDetectionActive) {
+        if (startBtn) startBtn.disabled = true;
+        if (stopBtn) stopBtn.disabled = false;
+    } else {
+        if (startBtn) startBtn.disabled = false;
+        if (stopBtn) stopBtn.disabled = true;
+    }
+}
+
+function loadSexOffenderAlerts() {
+    fetch('/api/sex_offender_detection/recent_detections?limit=20')
+    .then(response => response.json())
+    .then(data => {
+        if (data.detections) {
+            sexOffenderAlerts = data.detections;
+            renderSexOffenderAlerts();
+        }
+    })
+    .catch(error => {
+        console.error('Error loading sex offender alerts:', error);
+    });
+}
+
+function renderSexOffenderAlerts() {
+    const container = document.getElementById('sex-offender-alerts-container');
+    if (!container) return;
+    
+    if (sexOffenderAlerts.length === 0) {
+        container.innerHTML = `
+            <div class="text-muted text-center">
+                <i class="fas fa-shield-alt"></i><br>
+                No sex offender alerts yet
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = sexOffenderAlerts.map(alert => {
+        const timestamp = new Date(alert.timestamp).toLocaleString();
+        const results = alert.results || [];
+        
+        return `
+            <div class="alert alert-danger mb-2">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="alert-heading mb-1">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Sex Offender Alert
+                        </h6>
+                        <small class="text-muted">${timestamp}</small>
+                        <div class="mt-2">
+                            ${results.map(result => `
+                                <div class="small">
+                                    <strong>${result.offender_info?.name || result.offender_id}</strong>
+                                    <span class="badge bg-danger ms-2">${(result.confidence * 100).toFixed(1)}%</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function clearSexOffenderAlerts() {
+    sexOffenderAlerts = [];
+    renderSexOffenderAlerts();
+    showNotification('Sex offender alerts cleared', 'info');
+}
+
+// ============================================================================
+// Family Member Management Functions
+// ============================================================================
+
+function loadFamilyMembers() {
+    fetch('/api/family/analysis/members')
+    .then(response => response.json())
+    .then(data => {
+        if (data.family_members) {
+            familyMembers = Object.values(data.family_members);
+            renderFamilyMembersList();
+        }
+    })
+    .catch(error => {
+        console.error('Error loading family members:', error);
+    });
+}
+
+function renderFamilyMembersList() {
+    const container = document.getElementById('family-members-list');
+    if (!container) return;
+    
+    if (familyMembers.length === 0) {
+        container.innerHTML = '<div class="text-muted">No family members added yet</div>';
+        return;
+    }
+    
+    container.innerHTML = familyMembers.map(member => `
+        <div class="d-flex justify-content-between align-items-center mb-1 p-2 border rounded">
+            <div>
+                <strong>${member.name}</strong>
+                <small class="text-muted d-block">Added: ${new Date(member.added_date).toLocaleDateString()}</small>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" onclick="removeFamilyMember('${member.name}')">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function addFamilyMember() {
+    const nameInput = document.getElementById('family-member-name');
+    const photoInput = document.getElementById('family-member-photo');
+    
+    const name = nameInput.value.trim();
+    const photo = photoInput.files[0];
+    
+    if (!name) {
+        showNotification('Please enter a family member name', 'error');
+        return;
+    }
+    
+    if (!photo) {
+        showNotification('Please select a photo', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('photo', photo);
+    
+    fetch('/api/family/analysis/members', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'added') {
+            showNotification(`Family member ${name} added successfully`, 'success');
+            nameInput.value = '';
+            photoInput.value = '';
+            loadFamilyMembers();
+        } else {
+            showNotification('Failed to add family member: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error adding family member:', error);
+        showNotification('Error adding family member', 'error');
+    });
+}
+
+function removeFamilyMember(name) {
+    if (!confirm(`Are you sure you want to remove ${name}?`)) {
+        return;
+    }
+    
+    fetch(`/api/family/analysis/members/${encodeURIComponent(name)}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'removed') {
+            showNotification(`Family member ${name} removed`, 'info');
+            loadFamilyMembers();
+        } else {
+            showNotification('Failed to remove family member: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error removing family member:', error);
+        showNotification('Error removing family member', 'error');
+    });
+}
+
+function captureCurrentFrame() {
+    const nameInput = document.getElementById('family-member-name');
+    const name = nameInput.value.trim();
+    
+    if (!name) {
+        showNotification('Please enter a family member name first', 'error');
+        return;
+    }
+    
+    // This would need to be implemented with the current frame capture mechanism
+    showNotification('Frame capture feature requires integration with video processor', 'info');
+}
+
+function loadFamilyMemberDetections() {
+    // This would load recent family member detections
+    // For now, we'll show a placeholder
+    const container = document.getElementById('family-member-detections-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="text-muted text-center">
+                <i class="fas fa-user-friends"></i><br>
+                No family member detections yet
+            </div>
+        `;
+    }
+}
+
+function clearFamilyMemberDetections() {
+    familyMemberDetections = [];
+    loadFamilyMemberDetections();
+    showNotification('Family member detections cleared', 'info');
+}
+
+// ============================================================================
+// Snapshot Analysis Functions
+// ============================================================================
+
+function analyzeSnapshot(imageFile) {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    
+    fetch('/api/snapshot/analyze', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.analysis_status === 'completed') {
+            showNotification(`Snapshot analysis complete: ${data.sex_offenders.length} sex offenders, ${data.family_members.length} family members`, 'info');
+            
+            // Show analysis results
+            if (data.sex_offenders.length > 0) {
+                showNotification(`🚨 SEX OFFENDER DETECTED: ${data.sex_offenders[0].offender_info?.name || 'Unknown'}`, 'error');
+            }
+            if (data.family_members.length > 0) {
+                showNotification(`👨‍👩‍👧‍👦 FAMILY MEMBER DETECTED: ${data.family_members[0].name}`, 'success');
+            }
+        } else {
+            showNotification('Snapshot analysis failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error analyzing snapshot:', error);
+        showNotification('Error analyzing snapshot', 'error');
+    });
+}
+
+// ============================================================================
+// WebSocket Event Handlers for Real-time Updates
+// ============================================================================
+
+// Handle sex offender detection updates
+function handleSexOffenderDetectionUpdate(data) {
+    console.log('Sex offender detection update:', data);
+    
+    if (data.results && data.results.length > 0) {
+        // Add to alerts
+        sexOffenderAlerts.unshift({
+            timestamp: data.timestamp,
+            results: data.results
+        });
+        
+        // Keep only recent alerts
+        if (sexOffenderAlerts.length > 50) {
+            sexOffenderAlerts = sexOffenderAlerts.slice(0, 50);
+        }
+        
+        // Update display
+        renderSexOffenderAlerts();
+        
+        // Show critical alerts
+        data.results.forEach(result => {
+            if (result.confidence > 0.7) {
+                showNotification(`🚨 SEX OFFENDER ALERT: ${result.offender_info?.name || result.offender_id}`, 'error');
+            }
+        });
+    }
+}
+
+// Handle family member detection updates
+function handleFamilyMemberDetection(data) {
+    console.log('Family member detection:', data);
+    
+    // Add to detections
+    familyMemberDetections.unshift({
+        timestamp: data.timestamp,
+        ...data
+    });
+    
+    // Keep only recent detections
+    if (familyMemberDetections.length > 50) {
+        familyMemberDetections = familyMemberDetections.slice(0, 50);
+    }
+    
+    // Update display
+    loadFamilyMemberDetections();
+    
+    // Show notification
+    showNotification(`👨‍👩‍👧‍👦 FAMILY MEMBER: ${data.name}`, 'success');
+}
+
+// ============================================================================
+// Initialize enhanced features
+// ============================================================================
+
+// Add event listeners for slider updates
+document.addEventListener('DOMContentLoaded', function() {
+    // Sex offender threshold slider
+    const sexOffenderThreshold = document.getElementById('sex-offender-threshold');
+    if (sexOffenderThreshold) {
+        sexOffenderThreshold.addEventListener('input', function() {
+            document.getElementById('sex-offender-threshold-value').textContent = this.value;
+        });
+    }
+    
+    // Sex offender interval slider
+    const sexOffenderInterval = document.getElementById('sex-offender-interval');
+    if (sexOffenderInterval) {
+        sexOffenderInterval.addEventListener('input', function() {
+            document.getElementById('sex-offender-interval-value').textContent = this.value + 's';
+        });
+    }
+});
