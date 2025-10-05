@@ -25,12 +25,21 @@
     </div>
 
     <div class="container-fluid">
-        <!-- Header -->
-        <nav class="navbar navbar-dark bg-dark mb-4">
+        <!-- Header - Desktop -->
+        <nav class="navbar navbar-dark bg-dark mb-4 d-none d-md-block">
             <div class="container-fluid">
                 <span class="navbar-brand mb-0 h1">
                     <i class="fas fa-video"></i> YOLOv8 Video Processing Dashboard
                 </span>
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle text-white" href="#" role="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-cog"></i> System Views
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item active" href="/"><i class="fas fa-desktop"></i> Single Camera View</a></li>
+                        <li><a class="dropdown-item" href="/distributed"><i class="fas fa-network-wired"></i> Multi-Camera Dashboard</a></li>
+                    </ul>
+                </div>
                 <div class="d-flex">
                     <span class="badge bg-success me-2" id="connection-status">
                         <i class="fas fa-circle"></i> Connected
@@ -42,76 +51,207 @@
             </div>
         </nav>
 
+        <!-- Mobile Header -->
+        <div class="d-md-none mb-3">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-dark text-white rounded">
+                <div>
+                    <h5 class="mb-0">
+                        <i class="fas fa-video"></i> YOLOv8 Dashboard
+                    </h5>
+                </div>
+                <div class="d-flex gap-2">
+                    <span class="badge bg-success" id="connection-status-mobile">
+                        <i class="fas fa-circle"></i> <span class="d-none d-sm-inline">Connected</span>
+                    </span>
+                    <span class="badge bg-info" id="processing-status-mobile">
+                        <i class="fas fa-pause"></i> <span class="d-none d-sm-inline">Stopped</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
         <div class="row">
-            <!-- Control Panel -->
-            <div class="col-md-4">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5><i class="fas fa-cog"></i> Control Panel</h5>
+            <!-- Main Content Area -->
+            <div class="col-12">
+                <!-- Tab Navigation - Desktop -->
+                <ul class="nav nav-tabs mb-4 d-none d-md-flex" id="mainTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="video-tab" data-bs-toggle="tab" data-bs-target="#video-panel" type="button" role="tab" aria-controls="video-panel" aria-selected="true">
+                            <i class="fas fa-video"></i> Video Feeds
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-panel" type="button" role="tab" aria-controls="settings-panel" aria-selected="false">
+                            <i class="fas fa-cog"></i> Settings
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="timeline-tab" data-bs-toggle="tab" data-bs-target="#timeline-panel" type="button" role="tab" aria-controls="timeline-panel" aria-selected="false">
+                            <i class="fas fa-history"></i> Timeline
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="notifications-tab" data-bs-toggle="tab" data-bs-target="#notifications-panel" type="button" role="tab" aria-controls="notifications-panel" aria-selected="false">
+                            <i class="fas fa-bell"></i> Notifications
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- Tab Content -->
+                <div class="tab-content" id="mainTabContent">
+                    <!-- Video Panel -->
+                    <div class="tab-pane fade show active" id="video-panel" role="tabpanel" aria-labelledby="video-tab">
+                        <div class="row">
+                            <!-- Video Display -->
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5><i class="fas fa-video"></i> Video Feeds</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <!-- Video Display Areas -->
+                                        <div class="row">
+                                            <!-- Raw Video Feed -->
+                                            <div class="col-md-6 mb-3">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <h6 class="mb-0">
+                                                        <i class="fas fa-camera"></i> Raw Feed
+                                                    </h6>
+                                                    <button class="btn btn-sm btn-outline-primary" onclick="toggleFullscreen('raw-video-feed')" title="Toggle Fullscreen">
+                                                        <i class="fas fa-expand"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="video-container-small">
+                                                    <div id="raw-video-placeholder" class="video-placeholder">
+                                                        <i class="fas fa-camera fa-2x text-muted"></i>
+                                                        <p class="mt-2 text-muted small">Raw camera feed</p>
+                                                    </div>
+                                                    <img id="raw-video-feed" class="video-feed-small" style="display: none;" alt="Raw Video Feed">
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Processed Video Feed -->
+                                            <div class="col-md-6 mb-3">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <h6 class="mb-0">
+                                                        <i class="fas fa-eye"></i> Processed Feed
+                                                    </h6>
+                                                    <button class="btn btn-sm btn-outline-primary" onclick="toggleFullscreen('processed-video-feed')" title="Toggle Fullscreen">
+                                                        <i class="fas fa-expand"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="video-container-small">
+                                                    <div id="processed-video-placeholder" class="video-placeholder">
+                                                        <i class="fas fa-eye fa-2x text-muted"></i>
+                                                        <p class="mt-2 text-muted small">Processed with detections</p>
+                                                    </div>
+                                                    <img id="processed-video-feed" class="video-feed-small" style="display: none;" alt="Processed Video Feed">
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Processing Info -->
+                                        <div class="mt-3">
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-info-circle"></i> 
+                                                        Mode: <span id="current-mode">None</span>
+                                                    </small>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-clock"></i> 
+                                                        Processing Time: <span id="processing-time">0s</span>
+                                                    </small>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-tv"></i> 
+                                                        Frame: <span id="current-frame">0</span>
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <!-- Processing Mode Selection -->
-                        <div class="mb-3">
-                            <label class="form-label">Processing Mode</label>
-                            <div class="btn-group w-100" role="group">
-                                <input type="radio" class="btn-check" name="mode" id="camera-mode" value="camera" checked>
-                                <label class="btn btn-outline-primary" for="camera-mode">
-                                    <i class="fas fa-camera"></i> Camera
-                                </label>
-                                
-                                <input type="radio" class="btn-check" name="mode" id="upload-mode" value="upload">
-                                <label class="btn btn-outline-primary" for="upload-mode">
-                                    <i class="fas fa-upload"></i> Upload
-                                </label>
-                            </div>
-                        </div>
 
-                        <!-- Camera Selection -->
-                        <div class="mb-3" id="camera-controls">
-                            <label for="camera-select" class="form-label">Camera</label>
-                            <select class="form-select" id="camera-select">
-                                <option value="">Loading cameras...</option>
-                            </select>
-                        </div>
+                    <!-- Settings Panel -->
+                    <div class="tab-pane fade" id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
+                        <div class="row">
+                            <!-- Control Panel -->
+                            <div class="col-md-6">
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h5><i class="fas fa-cog"></i> Control Panel</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <!-- Processing Mode Selection -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Processing Mode</label>
+                                            <div class="btn-group w-100" role="group">
+                                                <input type="radio" class="btn-check" name="mode" id="camera-mode" value="camera" checked>
+                                                <label class="btn btn-outline-primary" for="camera-mode">
+                                                    <i class="fas fa-camera"></i> Camera
+                                                </label>
+                                                
+                                                <input type="radio" class="btn-check" name="mode" id="upload-mode" value="upload">
+                                                <label class="btn btn-outline-primary" for="upload-mode">
+                                                    <i class="fas fa-upload"></i> Upload
+                                                </label>
+                                            </div>
+                                        </div>
 
-                        <!-- Video Upload -->
-                        <div class="mb-3" id="upload-controls" style="display: none;">
-                            <label for="video-upload" class="form-label">Video File</label>
-                            <input type="file" class="form-control" id="video-upload" accept="video/*">
-                            <div class="form-text">Supported formats: MP4, AVI, MOV (Max 100MB)</div>
-                        </div>
+                                        <!-- Camera Selection -->
+                                        <div class="mb-3" id="camera-controls">
+                                            <label for="camera-select" class="form-label">Camera</label>
+                                            <select class="form-select" id="camera-select">
+                                                <option value="">Loading cameras...</option>
+                                            </select>
+                                        </div>
 
-                        <!-- Processing Parameters -->
-                        <div class="mb-3">
-                            <label for="confidence-slider" class="form-label">
-                                Confidence Threshold: <span id="confidence-value">0.25</span>
-                            </label>
-                            <input type="range" class="form-range" id="confidence-slider" 
-                                   min="0.1" max="1.0" step="0.05" value="0.25">
-                        </div>
+                                        <!-- Video Upload -->
+                                        <div class="mb-3" id="upload-controls" style="display: none;">
+                                            <label for="video-upload" class="form-label">Video File</label>
+                                            <input type="file" class="form-control" id="video-upload" accept="video/*">
+                                            <div class="form-text">Supported formats: MP4, AVI, MOV (Max 100MB)</div>
+                                        </div>
 
-                        <div class="mb-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="enable-tracking" checked>
-                                <label class="form-check-label" for="enable-tracking">
-                                    Enable Object Tracking
-                                </label>
-                            </div>
-                        </div>
+                                        <!-- Processing Parameters -->
+                                        <div class="mb-3">
+                                            <label for="confidence-slider" class="form-label">
+                                                Confidence Threshold: <span id="confidence-value">0.25</span>
+                                            </label>
+                                            <input type="range" class="form-range" id="confidence-slider" 
+                                                   min="0.1" max="1.0" step="0.05" value="0.25">
+                                        </div>
 
-                        <!-- Object Classes Selection -->
-                        <div class="mb-3">
-                            <label for="class-select" class="form-label">Detection Classes</label>
-                            <select class="form-select" id="class-select" onchange="updateClassFilterStatus()">
-                                <option value="">All Classes (80 objects)</option>
-                            </select>
-                            <div class="form-text">Choose a class set to focus detection on relevant objects</div>
-                            <div id="class-filter-status" class="mt-2" style="display: none;">
-                                <small class="text-info">
-                                    <i class="fas fa-filter"></i> <span id="filter-status-text">Filtering enabled</span>
-                                </small>
-                            </div>
-                        </div>
+                                        <div class="mb-3">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="enable-tracking" checked>
+                                                <label class="form-check-label" for="enable-tracking">
+                                                    Enable Object Tracking
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <!-- Object Classes Selection -->
+                                        <div class="mb-3">
+                                            <label for="class-select" class="form-label">Detection Classes</label>
+                                            <select class="form-select" id="class-select" onchange="updateClassFilterStatus()">
+                                                <option value="">All Classes (80 objects)</option>
+                                            </select>
+                                            <div class="form-text">Choose a class set to focus detection on relevant objects</div>
+                                            <div id="class-filter-status" class="mt-2" style="display: none;">
+                                                <small class="text-info">
+                                                    <i class="fas fa-filter"></i> <span id="filter-status-text">Filtering enabled</span>
+                                                </small>
+                                            </div>
+                                        </div>
 
                         <!-- Gemini AI Controls -->
                         <div class="mb-3">
@@ -135,249 +275,242 @@
                             </div>
                         </div>
 
-
-                        <!-- Control Buttons -->
-                        <div class="d-grid gap-2">
-                            <button class="btn btn-success" id="start-btn" onclick="startProcessing()">
-                                <i class="fas fa-play"></i> Start Processing
-                            </button>
-                            <button class="btn btn-danger" id="stop-btn" onclick="stopProcessing()" disabled>
-                                <i class="fas fa-stop"></i> Stop Processing
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Statistics Panel -->
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-chart-bar"></i> Statistics</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row text-center">
-                            <div class="col-6 mb-3">
-                                <div class="stat-item">
-                                    <div class="stat-value" id="total-frames">0</div>
-                                    <div class="stat-label">Frames</div>
+                        <!-- Distributed Cameras Status -->
+                        <div class="mb-3">
+                            <div class="card border-info">
+                                <div class="card-header bg-info text-white py-2">
+                                    <h6 class="mb-0"><i class="fas fa-network-wired"></i> Distributed Cameras</h6>
                                 </div>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <div class="stat-item">
-                                    <div class="stat-value" id="total-detections">0</div>
-                                    <div class="stat-label">Detections</div>
-                                </div>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <div class="stat-item">
-                                    <div class="stat-value" id="fps">0.0</div>
-                                    <div class="stat-label">FPS</div>
-                                </div>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <div class="stat-item">
-                                    <div class="stat-value" id="active-tracks">0</div>
-                                    <div class="stat-label">Active Tracks</div>
-                                </div>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <div class="stat-item">
-                                    <div class="stat-value" id="people-count">0</div>
-                                    <div class="stat-label">People</div>
-                                </div>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <div class="stat-item">
-                                    <div class="stat-value" id="vehicles-count">0</div>
-                                    <div class="stat-label">Vehicles</div>
+                                <div class="card-body py-2">
+                                    <div id="distributed-status">
+                                        <small class="text-muted">
+                                            <i class="fas fa-info-circle"></i> Loading distributed cameras...
+                                        </small>
+                                    </div>
+                                    <div class="mt-2">
+                                        <a href="/distributed" class="btn btn-sm btn-outline-info">
+                                            <i class="fas fa-external-link-alt"></i> Open Multi-Camera Dashboard
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Detection Counts -->
-                        <div class="mt-3">
-                            <h6>Object Counts</h6>
-                            <div id="detection-counts" class="detection-counts">
-                                <div class="text-muted">No detections yet</div>
+                                        <!-- Control Buttons -->
+                                        <div class="d-grid gap-2">
+                                            <button class="btn btn-success" id="start-btn" onclick="startProcessing()">
+                                                <i class="fas fa-play"></i> Start Processing
+                                            </button>
+                                            <button class="btn btn-danger" id="stop-btn" onclick="stopProcessing()" disabled>
+                                                <i class="fas fa-stop"></i> Stop Processing
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Statistics Panel -->
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5><i class="fas fa-chart-bar"></i> Statistics</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row text-center">
+                                            <div class="col-6 mb-3">
+                                                <div class="stat-item">
+                                                    <div class="stat-value" id="total-frames">0</div>
+                                                    <div class="stat-label">Frames</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-6 mb-3">
+                                                <div class="stat-item">
+                                                    <div class="stat-value" id="total-detections">0</div>
+                                                    <div class="stat-label">Detections</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-6 mb-3">
+                                                <div class="stat-item">
+                                                    <div class="stat-value" id="fps">0.0</div>
+                                                    <div class="stat-label">FPS</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-6 mb-3">
+                                                <div class="stat-item">
+                                                    <div class="stat-value" id="active-tracks">0</div>
+                                                    <div class="stat-label">Active Tracks</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-6 mb-3">
+                                                <div class="stat-item">
+                                                    <div class="stat-value" id="people-count">0</div>
+                                                    <div class="stat-label">People</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-6 mb-3">
+                                                <div class="stat-item">
+                                                    <div class="stat-value" id="vehicles-count">0</div>
+                                                    <div class="stat-label">Vehicles</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Detection Counts -->
+                                        <div class="mt-3">
+                                            <h6>Object Counts</h6>
+                                            <div id="detection-counts" class="detection-counts">
+                                                <div class="text-muted">No detections yet</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Security Notifications Panel -->
-                <div class="card mt-4">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5><i class="fas fa-bell"></i> Security Notifications</h5>
-                        <div class="btn-group btn-group-sm" role="group">
-                            <button type="button" class="btn btn-outline-secondary" onclick="loadNotifications()" title="Refresh">
-                                <i class="fas fa-sync-alt"></i>
-                            </button>
-                            <button type="button" class="btn btn-outline-danger" onclick="clearNotifications()" title="Clear All">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
-                        <div id="notifications-container">
-                            <div class="text-muted text-center">
-                                <i class="fas fa-bell-slash"></i><br>
-                                No notifications yet
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Video Display -->
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-video"></i> Video Feeds</h5>
-                    </div>
-                    <div class="card-body">
-                        <!-- Video Display Areas -->
-                        <div class="row">
-                            <!-- Raw Video Feed -->
-                            <div class="col-md-6 mb-3">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0">
-                                        <i class="fas fa-camera"></i> Raw Feed
-                                    </h6>
-                                    <button class="btn btn-sm btn-outline-primary" onclick="toggleFullscreen('raw-video-feed')" title="Toggle Fullscreen">
-                                        <i class="fas fa-expand"></i>
+                    <!-- Timeline Panel -->
+                    <div class="tab-pane fade" id="timeline-panel" role="tabpanel" aria-labelledby="timeline-tab">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5><i class="fas fa-history"></i> Timeline Events</h5>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-primary me-2" onclick="refreshTimeline()">
+                                        <i class="fas fa-sync"></i> Refresh
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="clearTimeline()">
+                                        <i class="fas fa-trash"></i> Clear
                                     </button>
                                 </div>
-                                <div class="video-container-small">
-                                    <div id="raw-video-placeholder" class="video-placeholder">
-                                        <i class="fas fa-camera fa-2x text-muted"></i>
-                                        <p class="mt-2 text-muted small">Raw camera feed</p>
+                            </div>
+                            <div class="card-body">
+                                <!-- Search and Filter Controls -->
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                            <input type="text" class="form-control" id="timeline-search" placeholder="Search events..." onkeyup="searchTimeline()">
+                                        </div>
                                     </div>
-                                    <img id="raw-video-feed" class="video-feed-small" style="display: none;" alt="Raw Video Feed">
-                                </div>
-                            </div>
-                            
-                            <!-- Processed Video Feed -->
-                            <div class="col-md-6 mb-3">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0">
-                                        <i class="fas fa-eye"></i> Processed Feed
-                                    </h6>
-                                    <button class="btn btn-sm btn-outline-primary" onclick="toggleFullscreen('processed-video-feed')" title="Toggle Fullscreen">
-                                        <i class="fas fa-expand"></i>
-                                    </button>
-                                </div>
-                                <div class="video-container-small">
-                                    <div id="processed-video-placeholder" class="video-placeholder">
-                                        <i class="fas fa-eye fa-2x text-muted"></i>
-                                        <p class="mt-2 text-muted small">Processed with detections</p>
+                                    <div class="col-md-3">
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fas fa-filter"></i></span>
+                                            <select class="form-select" id="timeline-filter" onchange="filterTimeline()">
+                                                <option value="">All Sources</option>
+                                                <option value="camera:0">Camera 0</option>
+                                                <option value="camera:1">Camera 1</option>
+                                                <option value="video:">Video Files</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                    <img id="processed-video-feed" class="video-feed-small" style="display: none;" alt="Processed Video Feed">
+                                    <div class="col-md-2">
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fas fa-eye"></i></span>
+                                            <select class="form-select" id="timeline-object-filter" onchange="filterTimeline()">
+                                                <option value="">All Objects</option>
+                                                <option value="person">Person</option>
+                                                <option value="car">Car</option>
+                                                <option value="truck">Truck</option>
+                                                <option value="bus">Bus</option>
+                                                <option value="motorcycle">Motorcycle</option>
+                                                <option value="bicycle">Bicycle</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="input-group">
+                                            <span class="input-group-text"><i class="fas fa-list"></i></span>
+                                            <select class="form-select" id="timeline-limit" onchange="refreshTimeline()">
+                                                <option value="10">10 Events</option>
+                                                <option value="25" selected>25 Events</option>
+                                                <option value="50">50 Events</option>
+                                                <option value="100">100 Events</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-1">
+                                        <button class="btn btn-outline-secondary w-100" onclick="clearTimelineFilters()" title="Clear Filters">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-
-                        <!-- Processing Info -->
-                        <div class="mt-3">
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <small class="text-muted">
-                                        <i class="fas fa-info-circle"></i> 
-                                        Mode: <span id="current-mode">None</span>
-                                    </small>
+                                
+                                <div id="timeline-events" class="timeline-events">
+                                    <div class="text-center text-muted">
+                                        <i class="fas fa-history fa-2x mb-2"></i>
+                                        <p>No timeline events yet</p>
+                                        <small>Start processing to see new object detection events</small>
+                                    </div>
                                 </div>
-                                <div class="col-md-4">
-                                    <small class="text-muted">
-                                        <i class="fas fa-clock"></i> 
-                                        Processing Time: <span id="processing-time">0s</span>
-                                    </small>
-                                </div>
-                                <div class="col-md-4">
-                                    <small class="text-muted">
-                                        <i class="fas fa-tv"></i> 
-                                        Frame: <span id="current-frame">0</span>
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Recent Detections -->
-                <div class="card mt-4">
-                    <div class="card-header">
-                        <h5><i class="fas fa-eye"></i> Recent Detections</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="recent-detections" class="recent-detections">
-                            <div class="text-muted">No recent detections</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Timeline Events -->
-                <div class="card mt-4">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5><i class="fas fa-history"></i> Timeline Events</h5>
-                        <div>
-                            <button class="btn btn-sm btn-outline-primary me-2" onclick="refreshTimeline()">
-                                <i class="fas fa-sync"></i> Refresh
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="clearTimeline()">
-                                <i class="fas fa-trash"></i> Clear
-                            </button>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="fas fa-filter"></i></span>
-                                    <select class="form-select" id="timeline-filter" onchange="filterTimeline()">
-                                        <option value="">All Sources</option>
-                                        <option value="camera:0">Camera 0</option>
-                                        <option value="camera:1">Camera 1</option>
-                                        <option value="video:">Video Files</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="fas fa-list"></i></span>
-                                    <select class="form-select" id="timeline-limit" onchange="refreshTimeline()">
-                                        <option value="10">10 Events</option>
-                                        <option value="25" selected>25 Events</option>
-                                        <option value="50">50 Events</option>
-                                        <option value="100">100 Events</option>
-                                    </select>
+                                
+                                <div class="mt-3">
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <div class="stat-item">
+                                                <div class="stat-value" id="timeline-total-events">0</div>
+                                                <div class="stat-label">Total Events</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="stat-item">
+                                                <div class="stat-value" id="timeline-new-objects">0</div>
+                                                <div class="stat-label">New Objects</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="stat-item">
+                                                <div class="stat-value" id="timeline-snapshots">0</div>
+                                                <div class="stat-label">Snapshots</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
-                        <div id="timeline-events" class="timeline-events">
-                            <div class="text-center text-muted">
-                                <i class="fas fa-history fa-2x mb-2"></i>
-                                <p>No timeline events yet</p>
-                                <small>Start processing to see new object detection events</small>
+                        <!-- Recent Detections -->
+                        <div class="card mt-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5><i class="fas fa-eye"></i> Recent Detections</h5>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="loadRecentDetections()" title="Refresh">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info" onclick="toggleAutoRefresh()" id="auto-refresh-btn" title="Toggle Auto-Refresh">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="recent-detections" class="recent-detections">
+                                    <div class="text-center text-muted">
+                                        <i class="fas fa-eye fa-2x mb-2"></i>
+                                        <p>No recent detections</p>
+                                        <small>Start processing to see new object detection events</small>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        
-                        <div class="mt-3">
-                            <div class="row text-center">
-                                <div class="col-4">
-                                    <div class="stat-item">
-                                        <div class="stat-value" id="timeline-total-events">0</div>
-                                        <div class="stat-label">Total Events</div>
-                                    </div>
+                    </div>
+
+                    <!-- Notifications Panel -->
+                    <div class="tab-pane fade" id="notifications-panel" role="tabpanel" aria-labelledby="notifications-tab">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5><i class="fas fa-bell"></i> Security Notifications</h5>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="loadNotifications()" title="Refresh">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger" onclick="clearNotifications()" title="Clear All">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
                                 </div>
-                                <div class="col-4">
-                                    <div class="stat-item">
-                                        <div class="stat-value" id="timeline-new-objects">0</div>
-                                        <div class="stat-label">New Objects</div>
-                                    </div>
-                                </div>
-                                <div class="col-4">
-                                    <div class="stat-item">
-                                        <div class="stat-value" id="timeline-snapshots">0</div>
-                                        <div class="stat-label">Snapshots</div>
+                            </div>
+                            <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                                <div id="notifications-container">
+                                    <div class="text-muted text-center">
+                                        <i class="fas fa-bell-slash"></i><br>
+                                        No notifications yet
                                     </div>
                                 </div>
                             </div>
@@ -386,6 +519,39 @@
                 </div>
             </div>
         </div>
+
+        <!-- Mobile Bottom Navigation -->
+        <nav class="d-md-none fixed-bottom bg-white border-top shadow-lg">
+            <ul class="nav nav-pills nav-justified p-2" id="mobileTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="video-tab-mobile" data-bs-toggle="tab" data-bs-target="#video-panel" type="button" role="tab" aria-controls="video-panel" aria-selected="true">
+                        <i class="fas fa-video d-block mb-1"></i>
+                        <small>Video</small>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="settings-tab-mobile" data-bs-toggle="tab" data-bs-target="#settings-panel" type="button" role="tab" aria-controls="settings-panel" aria-selected="false">
+                        <i class="fas fa-cog d-block mb-1"></i>
+                        <small>Settings</small>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="timeline-tab-mobile" data-bs-toggle="tab" data-bs-target="#timeline-panel" type="button" role="tab" aria-controls="timeline-panel" aria-selected="false">
+                        <i class="fas fa-history d-block mb-1"></i>
+                        <small>Timeline</small>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="notifications-tab-mobile" data-bs-toggle="tab" data-bs-target="#notifications-panel" type="button" role="tab" aria-controls="notifications-panel" aria-selected="false">
+                        <i class="fas fa-bell d-block mb-1"></i>
+                        <small>Alerts</small>
+                    </button>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Add bottom padding for mobile navigation -->
+        <div class="d-md-none" style="height: 80px;"></div>
     </div>
 
     <!-- Loading Modal -->

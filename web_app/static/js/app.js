@@ -34,8 +34,9 @@ let currentPopupNotification = null;
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     
-    // Add keyboard support for fullscreen
+    // Add keyboard support for fullscreen and tab navigation
     document.addEventListener('keydown', function(e) {
+        // Handle fullscreen escape
         if (e.key === 'Escape' && document.fullscreenElement) {
             if (document.exitFullscreen) {
                 document.exitFullscreen();
@@ -43,6 +44,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.webkitExitFullscreen();
             } else if (document.msExitFullscreen) {
                 document.msExitFullscreen();
+            }
+        }
+        
+        // Handle tab navigation shortcuts (Ctrl/Cmd + number)
+        if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '4') {
+            e.preventDefault();
+            const tabIndex = parseInt(e.key) - 1;
+            const tabButtons = document.querySelectorAll('#mainTabs .nav-link');
+            if (tabButtons[tabIndex]) {
+                tabButtons[tabIndex].click();
             }
         }
     });
@@ -55,6 +66,9 @@ function initializeApp() {
     // Setup event listeners
     setupEventListeners();
     
+    // Setup tab functionality
+    setupTabFunctionality();
+    
     // Load initial data
     loadCameras();
     loadConfig();
@@ -63,6 +77,7 @@ function initializeApp() {
     loadNotifications();
     loadNotificationStats();
     loadDetectionClasses();
+    loadDistributedStatus();
     
     // Auto-start processing after a short delay
     setTimeout(() => {
@@ -155,6 +170,104 @@ function setupEventListeners() {
             console.log('Video file selected:', this.files[0].name);
         }
     });
+}
+
+function setupTabFunctionality() {
+    // Get all tab buttons (both desktop and mobile)
+    const desktopTabButtons = document.querySelectorAll('#mainTabs .nav-link');
+    const mobileTabButtons = document.querySelectorAll('#mobileTabs .nav-link');
+    
+    // Add click event listeners to desktop tab buttons
+    desktopTabButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            handleTabSwitch(this, '#mainTabs');
+        });
+    });
+    
+    // Add click event listeners to mobile tab buttons
+    mobileTabButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            handleTabSwitch(this, '#mobileTabs');
+        });
+    });
+    
+    // Initialize with first tab active on both desktop and mobile
+    if (desktopTabButtons.length > 0) {
+        updateActiveTabIndicator(desktopTabButtons[0], '#mainTabs');
+    }
+    if (mobileTabButtons.length > 0) {
+        updateActiveTabIndicator(mobileTabButtons[0], '#mobileTabs');
+    }
+}
+
+function handleTabSwitch(clickedButton, tabContainer) {
+    const targetTab = clickedButton.getAttribute('data-bs-target');
+    
+                // Add loading state for timeline and notifications tabs
+                if (targetTab === '#timeline-panel') {
+                    // Refresh timeline and recent detections when switching to timeline tab
+                    setTimeout(() => {
+                        refreshTimeline();
+                        loadRecentDetections();
+                    }, 100);
+                } else if (targetTab === '#notifications-panel') {
+        // Refresh notifications when switching to notifications tab
+        setTimeout(() => {
+            loadNotifications();
+        }, 100);
+    }
+    
+    // Update active tab indicator for both desktop and mobile
+    updateActiveTabIndicator(clickedButton, tabContainer);
+    
+    // Sync the other tab container
+    const otherContainer = tabContainer === '#mainTabs' ? '#mobileTabs' : '#mainTabs';
+    syncTabContainers(targetTab, otherContainer);
+}
+
+function syncTabContainers(targetTab, otherContainer) {
+    const otherButtons = document.querySelectorAll(`${otherContainer} .nav-link`);
+    otherButtons.forEach(button => {
+        if (button.getAttribute('data-bs-target') === targetTab) {
+            updateActiveTabIndicator(button, otherContainer);
+        }
+    });
+}
+
+function updateActiveTabIndicator(activeButton, container) {
+    // Remove active class from all tabs in the specified container
+    document.querySelectorAll(`${container} .nav-link`).forEach(btn => {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-selected', 'false');
+    });
+    
+    // Add active class to clicked tab
+    activeButton.classList.add('active');
+    activeButton.setAttribute('aria-selected', 'true');
+}
+
+// Tab switching helper functions
+function switchToTab(tabName) {
+    const tabButton = document.querySelector(`#${tabName}-tab`);
+    if (tabButton) {
+        tabButton.click();
+    }
+}
+
+function switchToVideoTab() {
+    switchToTab('video');
+}
+
+function switchToSettingsTab() {
+    switchToTab('settings');
+}
+
+function switchToTimelineTab() {
+    switchToTab('timeline');
+}
+
+function switchToNotificationsTab() {
+    switchToTab('notifications');
 }
 
 function toggleModeControls(mode) {
@@ -493,32 +606,42 @@ function updateStatistics(stats) {
 }
 
 function updateConnectionStatus(connected) {
-    const status = document.getElementById('connection-status');
-    if (connected) {
-        status.className = 'badge bg-success me-2';
-        status.innerHTML = '<i class="fas fa-circle"></i> Connected';
-    } else {
-        status.className = 'badge bg-danger me-2 disconnected';
-        status.innerHTML = '<i class="fas fa-circle"></i> Disconnected';
-    }
+    const desktopStatus = document.getElementById('connection-status');
+    const mobileStatus = document.getElementById('connection-status-mobile');
+    
+    const statusElements = [desktopStatus, mobileStatus].filter(el => el);
+    
+    statusElements.forEach(status => {
+        if (connected) {
+            status.className = 'badge bg-success me-2';
+            status.innerHTML = '<i class="fas fa-circle"></i> <span class="d-none d-sm-inline">Connected</span>';
+        } else {
+            status.className = 'badge bg-danger me-2 disconnected';
+            status.innerHTML = '<i class="fas fa-circle"></i> <span class="d-none d-sm-inline">Disconnected</span>';
+        }
+    });
 }
 
 function updateProcessingStatus(processing) {
-    const status = document.getElementById('processing-status');
+    const desktopStatus = document.getElementById('processing-status');
+    const mobileStatus = document.getElementById('processing-status-mobile');
     const startBtn = document.getElementById('start-btn');
     const stopBtn = document.getElementById('stop-btn');
     
-    if (processing) {
-        status.className = 'badge bg-success processing';
-        status.innerHTML = '<i class="fas fa-play"></i> Processing';
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-    } else {
-        status.className = 'badge bg-warning stopped';
-        status.innerHTML = '<i class="fas fa-pause"></i> Stopped';
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-    }
+    const statusElements = [desktopStatus, mobileStatus].filter(el => el);
+    
+    statusElements.forEach(status => {
+        if (processing) {
+            status.className = 'badge bg-success processing';
+            status.innerHTML = '<i class="fas fa-play"></i> <span class="d-none d-sm-inline">Processing</span>';
+        } else {
+            status.className = 'badge bg-warning stopped';
+            status.innerHTML = '<i class="fas fa-pause"></i> <span class="d-none d-sm-inline">Stopped</span>';
+        }
+    });
+    
+    if (startBtn) startBtn.disabled = processing;
+    if (stopBtn) stopBtn.disabled = !processing;
 }
 
 function updateUI() {
@@ -643,20 +766,28 @@ function addTimelineEvent(eventData) {
 }
 
 function renderTimelineEvents() {
+    renderFilteredTimelineEvents(timelineEvents);
+}
+
+function renderFilteredTimelineEvents(events) {
     const container = document.getElementById('timeline-events');
     
-    if (timelineEvents.length === 0) {
+    if (!events || events.length === 0) {
+        const hasFilters = document.getElementById('timeline-search').value || 
+                          document.getElementById('timeline-filter').value || 
+                          document.getElementById('timeline-object-filter').value;
+        
         container.innerHTML = `
             <div class="text-center text-muted">
                 <i class="fas fa-history fa-2x mb-2"></i>
-                <p>No timeline events yet</p>
-                <small>Start processing to see new object detection events</small>
+                <p>${hasFilters ? 'No events match your filters' : 'No timeline events yet'}</p>
+                <small>${hasFilters ? 'Try adjusting your search or filter criteria' : 'Start processing to see new object detection events'}</small>
             </div>
         `;
         return;
     }
     
-    const eventsHtml = timelineEvents.map(event => createTimelineEventHtml(event)).join('');
+    const eventsHtml = events.map(event => createTimelineEventHtml(event)).join('');
     container.innerHTML = eventsHtml;
 }
 
@@ -673,22 +804,23 @@ function createTimelineEventHtml(event) {
         ).join('');
     }
     
-    let snapshotHtml = '';
+    // Image HTML for horizontal layout
+    let imageHtml = '';
     if (event.snapshot_path) {
-        snapshotHtml = `
-            <div class="timeline-event-snapshot">
-                <div class="snapshot-toggle mb-2">
-                    <button class="btn btn-sm btn-outline-primary me-2" onclick="toggleSnapshot('${event.event_id}', true)">
-                        <i class="fas fa-eye"></i> Annotated
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleSnapshot('${event.event_id}', false)">
-                        <i class="fas fa-image"></i> Raw
-                    </button>
-                </div>
+        imageHtml = `
+            <div class="timeline-event-image">
                 <img id="snapshot-${event.event_id}" 
                      src="/api/timeline/snapshots/${encodeURIComponent(event.snapshot_path)}" 
                      alt="Event Snapshot" 
                      onclick="showSnapshotModal('${event.snapshot_path}', '${event.event_id}')">
+            </div>
+        `;
+    } else {
+        imageHtml = `
+            <div class="timeline-event-image">
+                <div class="d-flex align-items-center justify-content-center h-100 bg-light text-muted">
+                    <i class="fas fa-image fa-2x"></i>
+                </div>
             </div>
         `;
     }
@@ -714,19 +846,22 @@ function createTimelineEventHtml(event) {
     
     return `
         <div class="timeline-event new" data-event-id="${event.event_id}">
-            <div class="timeline-event-header">
-                <span class="timeline-event-time">${timestamp}</span>
-                <span class="timeline-event-id">${event.event_id}</span>
-            </div>
-            <div class="timeline-event-source">${source}</div>
-            <div class="timeline-event-objects">${objectsHtml}</div>
-            ${snapshotHtml}
-            ${geminiReportHtml}
-            <div class="timeline-event-meta">
-                <span class="timeline-event-frame">Frame: ${event.frame_number}</span>
-                <span class="timeline-event-confidence">
-                    Avg Confidence: ${(event.confidence_scores.reduce((a, b) => a + b, 0) / event.confidence_scores.length * 100).toFixed(0)}%
-                </span>
+            ${imageHtml}
+            <div class="timeline-event-content">
+                <div class="timeline-event-header">
+                    <span class="timeline-event-time">${timestamp}</span>
+                    <span class="timeline-event-id">${event.event_id}</span>
+                </div>
+                <div class="timeline-event-source">${source}</div>
+                <div class="timeline-event-objects">${objectsHtml}</div>
+                ${geminiReportHtml}
+                <div class="timeline-event-meta">
+                    <span class="timeline-event-frame">Frame: ${event.frame_number || 'N/A'}</span>
+                    <span class="timeline-event-confidence">
+                        Avg Confidence: ${event.confidence_scores && event.confidence_scores.length > 0 ? 
+                            (event.confidence_scores.reduce((a, b) => a + b, 0) / event.confidence_scores.length * 100).toFixed(0) + '%' : 'N/A'}
+                    </span>
+                </div>
             </div>
         </div>
     `;
@@ -743,11 +878,46 @@ function refreshTimeline() {
 }
 
 function filterTimeline() {
-    const filter = document.getElementById('timeline-filter').value;
-    const limit = parseInt(document.getElementById('timeline-limit').value) || 25;
+    applyTimelineFilters();
+}
+
+function searchTimeline() {
+    applyTimelineFilters();
+}
+
+function clearTimelineFilters() {
+    document.getElementById('timeline-search').value = '';
+    document.getElementById('timeline-filter').value = '';
+    document.getElementById('timeline-object-filter').value = '';
+    applyTimelineFilters();
+}
+
+function applyTimelineFilters() {
+    const searchTerm = document.getElementById('timeline-search').value.toLowerCase();
+    const sourceFilter = document.getElementById('timeline-filter').value;
+    const objectFilter = document.getElementById('timeline-object-filter').value;
     
-    // Reload with filter
-    loadTimelineEventsWithFilter(filter, limit);
+    // Filter the existing timeline events
+    const filteredEvents = timelineEvents.filter(event => {
+        // Search filter
+        const matchesSearch = !searchTerm || 
+            event.event_id.toLowerCase().includes(searchTerm) ||
+            event.video_source.toLowerCase().includes(searchTerm) ||
+            (event.objects && event.objects.some(obj => obj.class_name.toLowerCase().includes(searchTerm))) ||
+            event.timestamp.toLowerCase().includes(searchTerm);
+        
+        // Source filter
+        const matchesSource = !sourceFilter || event.video_source === sourceFilter;
+        
+        // Object filter
+        const matchesObject = !objectFilter || 
+            (event.objects && event.objects.some(obj => obj.class_name === objectFilter));
+        
+        return matchesSearch && matchesSource && matchesObject;
+    });
+    
+    // Render filtered events
+    renderFilteredTimelineEvents(filteredEvents);
 }
 
 async function loadTimelineEventsWithFilter(filter, limit) {
@@ -836,33 +1006,92 @@ function toggleSnapshot(eventId, showAnnotated) {
 function showSnapshotModal(snapshotPath, eventId) {
     const event = timelineEvents.find(e => e.event_id === eventId);
     
-    // Create modal HTML with toggle buttons
+    // Create full-page modal HTML with improved layout
     const modalHtml = `
-        <div class="modal fade timeline-modal" id="snapshotModal" tabindex="-1">
-            <div class="modal-dialog modal-lg modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
+        <div class="modal fade snapshot-fullscreen-modal" id="snapshotModal" tabindex="-1" data-bs-backdrop="static">
+            <div class="modal-dialog modal-fullscreen">
+                <div class="modal-content h-100">
+                    <div class="modal-header bg-dark text-white">
                         <h5 class="modal-title">
-                            <i class="fas fa-camera"></i> Event Snapshot
+                            <i class="fas fa-camera"></i> Event Snapshot - ${eventId}
                         </h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="modal-body text-center">
-                        <div class="mb-3">
-                            <button class="btn btn-sm btn-primary me-2" onclick="toggleModalSnapshot(true)">
-                                <i class="fas fa-eye"></i> Annotated
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleModalSnapshot(false)">
-                                <i class="fas fa-image"></i> Raw
-                            </button>
+                    <div class="modal-body p-0 h-100">
+                        <div class="row h-100 g-0">
+                            <!-- Image Section -->
+                            <div class="col-lg-8 col-12 d-flex flex-column">
+                                <div class="image-controls p-3 bg-light border-bottom">
+                                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                                        <button class="btn btn-sm btn-primary" onclick="toggleModalSnapshot(true)">
+                                            <i class="fas fa-eye"></i> <span class="d-none d-md-inline">Annotated</span>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleModalSnapshot(false)">
+                                            <i class="fas fa-image"></i> <span class="d-none d-md-inline">Raw</span>
+                                        </button>
+                                        <div class="ms-auto">
+                                            <button class="btn btn-sm btn-outline-info" onclick="downloadSnapshot()">
+                                                <i class="fas fa-download"></i> <span class="d-none d-md-inline">Download</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1 d-flex align-items-center justify-content-center bg-dark">
+                                    <img id="modalSnapshot" 
+                                         src="/api/timeline/snapshots/${encodeURIComponent(snapshotPath)}" 
+                                         alt="Event Snapshot" 
+                                         class="snapshot-fullscreen-img">
+                                </div>
+                            </div>
+                            
+                            <!-- Details Section -->
+                            <div class="col-lg-4 col-12 bg-light">
+                                <div class="h-100 d-flex flex-column">
+                                    <!-- Event Info -->
+                                    <div class="p-3 border-bottom">
+                                        <h6 class="mb-2">
+                                            <i class="fas fa-info-circle"></i> Event Information
+                                        </h6>
+                                        <div class="small text-muted">
+                                            <div class="mb-1"><strong>Event ID:</strong> ${eventId}</div>
+                                            <div class="mb-1"><strong>Timestamp:</strong> ${event ? new Date(event.timestamp).toLocaleString() : 'N/A'}</div>
+                                            <div class="mb-1"><strong>Frame:</strong> ${event ? event.frame_number : 'N/A'}</div>
+                                            <div class="mb-1"><strong>Source:</strong> ${event ? event.video_source.replace('camera:', 'Camera ').replace('video:', 'Video: ') : 'N/A'}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Detected Objects -->
+                                    <div class="p-3 border-bottom flex-grow-1">
+                                        <h6 class="mb-2">
+                                            <i class="fas fa-eye"></i> Detected Objects
+                                        </h6>
+                                        <div id="modalDetectedObjects" class="objects-list">
+                                            ${event && event.objects ? event.objects.map(obj => 
+                                                `<div class="object-tag mb-2">
+                                                    <span class="badge bg-primary me-1">${obj.class_name}</span>
+                                                    <span class="small text-muted">Confidence: ${(obj.confidence * 100).toFixed(1)}%</span>
+                                                </div>`
+                                            ).join('') : '<div class="text-muted small">No objects detected</div>'}
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- AI Analysis -->
+                                    <div class="p-3">
+                                        <h6 class="mb-2">
+                                            <i class="fas fa-robot"></i> AI Analysis
+                                        </h6>
+                                        <div id="modalGeminiAnalysis" class="gemini-analysis-content">
+                                            <div class="text-muted small">
+                                                <i class="fas fa-spinner fa-spin"></i> Loading AI analysis...
+                                            </div>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-primary mt-2" onclick="loadModalGeminiReport('${eventId}')">
+                                            <i class="fas fa-sync"></i> Refresh Analysis
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <img id="modalSnapshot" 
-                             src="/api/timeline/snapshots/${encodeURIComponent(snapshotPath)}" 
-                             alt="Event Snapshot" 
-                             class="img-fluid">
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
             </div>
@@ -886,6 +1115,11 @@ function showSnapshotModal(snapshotPath, eventId) {
     const modal = new bootstrap.Modal(document.getElementById('snapshotModal'));
     modal.show();
     
+    // Load Gemini analysis for this event
+    setTimeout(() => {
+        loadModalGeminiReport(eventId);
+    }, 500);
+    
     // Remove modal from DOM when hidden
     document.getElementById('snapshotModal').addEventListener('hidden.bs.modal', function() {
         this.remove();
@@ -896,8 +1130,6 @@ function showSnapshotModal(snapshotPath, eventId) {
 
 function toggleModalSnapshot(showAnnotated) {
     const img = document.getElementById('modalSnapshot');
-    const buttons = document.querySelectorAll('#snapshotModal .btn');
-    
     if (!window.modalSnapshotPath) return;
     
     let newSrc;
@@ -910,24 +1142,127 @@ function toggleModalSnapshot(showAnnotated) {
     img.src = newSrc;
     
     // Update button states
-    buttons.forEach((btn, index) => {
-        if (index < 2) { // Only the first two buttons are the toggle buttons
-            btn.classList.remove('btn-primary', 'btn-secondary');
-            btn.classList.add('btn-outline-primary', 'btn-outline-secondary');
-        }
-    });
+    const annotatedBtn = document.querySelector('#snapshotModal button[onclick="toggleModalSnapshot(true)"]');
+    const rawBtn = document.querySelector('#snapshotModal button[onclick="toggleModalSnapshot(false)"]');
     
     if (showAnnotated) {
-        buttons[0].classList.remove('btn-outline-primary');
-        buttons[0].classList.add('btn-primary');
-        buttons[1].classList.remove('btn-outline-secondary');
-        buttons[1].classList.add('btn-secondary');
+        annotatedBtn.classList.remove('btn-outline-primary');
+        annotatedBtn.classList.add('btn-primary');
+        rawBtn.classList.remove('btn-secondary');
+        rawBtn.classList.add('btn-outline-secondary');
     } else {
-        buttons[0].classList.remove('btn-outline-primary');
-        buttons[0].classList.add('btn-secondary');
-        buttons[1].classList.remove('btn-outline-secondary');
-        buttons[1].classList.add('btn-primary');
+        annotatedBtn.classList.remove('btn-primary');
+        annotatedBtn.classList.add('btn-outline-primary');
+        rawBtn.classList.remove('btn-outline-secondary');
+        rawBtn.classList.add('btn-secondary');
     }
+}
+
+function downloadSnapshot() {
+    if (!window.modalSnapshotPath) return;
+    
+    const link = document.createElement('a');
+    link.href = `/api/timeline/snapshots/${encodeURIComponent(window.modalSnapshotPath)}`;
+    link.download = `snapshot_${window.modalEvent?.event_id || 'unknown'}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function loadModalGeminiReport(eventId) {
+    const contentDiv = document.getElementById('modalGeminiAnalysis');
+    if (!contentDiv) return;
+    
+    try {
+        // Show loading state
+        contentDiv.innerHTML = `
+            <div class="text-muted small">
+                <i class="fas fa-spinner fa-spin"></i> Loading AI analysis...
+            </div>
+        `;
+        
+        fetch(`/api/gemini/reports/${eventId}`)
+            .then(response => response.json())
+            .then(report => {
+                if (report && !report.error) {
+                    displayModalGeminiReport(report);
+                } else {
+                    contentDiv.innerHTML = `
+                        <div class="text-muted small">
+                            <i class="fas fa-clock"></i> AI analysis pending...
+                            <br><small>Report may take a few seconds to generate</small>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading Gemini report:', error);
+                contentDiv.innerHTML = `
+                    <div class="text-danger small">
+                        <i class="fas fa-exclamation-triangle"></i> Failed to load AI analysis
+                        <br><small>Click "Refresh Analysis" to retry</small>
+                    </div>
+                `;
+            });
+    } catch (error) {
+        console.error('Error loading Gemini report:', error);
+    }
+}
+
+function displayModalGeminiReport(report) {
+    const contentDiv = document.getElementById('modalGeminiAnalysis');
+    if (!contentDiv) return;
+    
+    let reportHtml = '';
+    
+    // Summary
+    if (report.summary) {
+        reportHtml += `
+            <div class="mb-3">
+                <strong class="small">Summary:</strong>
+                <p class="small mb-1">${report.summary}</p>
+            </div>
+        `;
+    }
+    
+    // Objects detected
+    if (report.objects_detected && report.objects_detected.length > 0) {
+        const objectsText = report.objects_detected.join(', ');
+        reportHtml += `
+            <div class="mb-3">
+                <strong class="small">Objects:</strong>
+                <div class="small">${objectsText}</div>
+            </div>
+        `;
+    }
+    
+    // Activity
+    if (report.activity) {
+        reportHtml += `
+            <div class="mb-3">
+                <strong class="small">Activity:</strong>
+                <div class="small">${report.activity}</div>
+            </div>
+        `;
+    }
+    
+    // Confidence
+    if (report.confidence) {
+        const confidenceClass = report.confidence === 'high' ? 'success' : 
+                               report.confidence === 'medium' ? 'warning' : 'secondary';
+        reportHtml += `
+            <div class="mb-3">
+                <strong class="small">Confidence:</strong>
+                <span class="badge bg-${confidenceClass} small">${report.confidence}</span>
+            </div>
+        `;
+    }
+    
+    contentDiv.innerHTML = reportHtml || `
+        <div class="text-muted small">
+            <i class="fas fa-info-circle"></i> No AI analysis available
+        </div>
+    `;
 }
 
 
@@ -1311,11 +1646,22 @@ function handleNewNotification(notificationData) {
     // Update display
     updateNotificationsDisplay();
     
-           // Show popup only for high/critical enter/exit notifications
-           if ((notificationData.importance === 'high' || notificationData.importance === 'critical') && 
-               (notificationData.event_data?.event_type === 'entered' || notificationData.event_data?.event_type === 'exited')) {
-               showNotificationPopup(notificationData);
-           }
+    // Show popup only for high/critical enter/exit notifications
+    if ((notificationData.importance === 'high' || notificationData.importance === 'critical') && 
+        (notificationData.event_data?.event_type === 'entered' || notificationData.event_data?.event_type === 'exited')) {
+        showNotificationPopup(notificationData);
+    }
+    
+    // Auto-switch to notifications tab for important notifications
+    if (notificationData.importance === 'critical' || notificationData.importance === 'high') {
+        // Only switch if we're not already on the notifications tab
+        const activeTab = document.querySelector('#mainTabs .nav-link.active');
+        if (activeTab && activeTab.id !== 'notifications-tab') {
+            setTimeout(() => {
+                switchToNotificationsTab();
+            }, 1000); // Delay to allow popup to show first
+        }
+    }
     
     // Play sound for important enter/exit notifications
     if (soundEnabled && (notificationData.importance === 'high' || notificationData.importance === 'critical') &&
@@ -1644,5 +1990,175 @@ function getTimeAgo(date) {
         return `${Math.floor(diffInSeconds / 3600)}h ago`;
     } else {
         return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    }
+}
+
+// Recent Detections Auto-Refresh
+let recentDetectionsInterval = null;
+let autoRefreshEnabled = false;
+
+function toggleAutoRefresh() {
+    const btn = document.getElementById('auto-refresh-btn');
+    const icon = btn.querySelector('i');
+    
+    if (autoRefreshEnabled) {
+        // Stop auto-refresh
+        clearInterval(recentDetectionsInterval);
+        recentDetectionsInterval = null;
+        autoRefreshEnabled = false;
+        icon.className = 'fas fa-play';
+        btn.title = 'Start Auto-Refresh';
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-outline-info');
+    } else {
+        // Start auto-refresh
+        recentDetectionsInterval = setInterval(() => {
+            loadRecentDetections();
+        }, 5000); // 5 seconds
+        autoRefreshEnabled = true;
+        icon.className = 'fas fa-pause';
+        btn.title = 'Stop Auto-Refresh';
+        btn.classList.remove('btn-outline-info');
+        btn.classList.add('btn-success');
+    }
+}
+
+function loadRecentDetections() {
+    fetch('/api/detections/recent?limit=10')
+        .then(response => response.json())
+        .then(data => {
+            updateRecentDetectionsDisplay(data.detections || []);
+        })
+        .catch(error => {
+            console.error('Error loading recent detections:', error);
+        });
+}
+
+function updateRecentDetectionsDisplay(detections) {
+    const container = document.getElementById('recent-detections');
+    
+    if (!detections || detections.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted">
+                <i class="fas fa-eye fa-2x mb-2"></i>
+                <p>No recent detections</p>
+                <small>Start processing to see new object detection events</small>
+            </div>
+        `;
+        return;
+    }
+    
+    const detectionsHtml = detections.map(detection => {
+        const timestamp = new Date(detection.timestamp).toLocaleString();
+        const confidence = (detection.confidence * 100).toFixed(0);
+        const confidenceClass = confidence >= 80 ? 'success' : confidence >= 60 ? 'warning' : 'danger';
+        
+        return `
+            <div class="detection-entry mb-2 p-2 border rounded">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${detection.class_name}</strong>
+                        <span class="badge bg-${confidenceClass} ms-2">${confidence}%</span>
+                    </div>
+                    <small class="text-muted">${timestamp}</small>
+                </div>
+                <div class="mt-1">
+                    <small class="text-muted">
+                        <i class="fas fa-video"></i> ${detection.source} 
+                        <span class="ms-2"><i class="fas fa-clock"></i> Frame ${detection.frame_number || 'N/A'}</span>
+                    </small>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = detectionsHtml;
+}
+
+// Load distributed camera system status
+function loadDistributedStatus() {
+    fetch('/api/distributed/stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                updateDistributedStatus('error', 'Error loading distributed status');
+                return;
+            }
+            
+            const activeClients = data.active_clients || 0;
+            const totalCameras = data.total_cameras || 0;
+            const framesProcessed = data.frames_processed || 0;
+            const detectionsTotal = data.detections_total || 0;
+            
+            if (activeClients > 0) {
+                updateDistributedStatus('active', {
+                    clients: activeClients,
+                    cameras: totalCameras,
+                    frames: framesProcessed,
+                    detections: detectionsTotal
+                });
+            } else {
+                updateDistributedStatus('inactive', {
+                    clients: 0,
+                    cameras: 0,
+                    frames: 0,
+                    detections: 0
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading distributed status:', error);
+            updateDistributedStatus('error', 'Connection error');
+        });
+}
+
+// Update distributed status display
+function updateDistributedStatus(status, data) {
+    const container = document.getElementById('distributed-status');
+    if (!container) return;
+    
+    switch (status) {
+        case 'active':
+            container.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="fas fa-circle text-success"></i>
+                        <strong>${data.clients} Active Camera(s)</strong><br>
+                        <small class="text-muted">
+                            ${data.cameras} total cameras • ${data.frames.toLocaleString()} frames processed • ${data.detections} detections
+                        </small>
+                    </div>
+                </div>
+            `;
+            break;
+            
+        case 'inactive':
+            container.innerHTML = `
+                <div class="text-center">
+                    <i class="fas fa-circle text-muted"></i>
+                    <small class="text-muted">
+                        No distributed cameras connected<br>
+                        Run <code>./run_camera_sender.sh</code> to connect cameras
+                    </small>
+                </div>
+            `;
+            break;
+            
+        case 'error':
+            container.innerHTML = `
+                <div class="text-center">
+                    <i class="fas fa-exclamation-triangle text-warning"></i>
+                    <small class="text-muted">${data}</small>
+                </div>
+            `;
+            break;
+            
+        default:
+            container.innerHTML = `
+                <div class="text-center">
+                    <i class="fas fa-info-circle text-muted"></i>
+                    <small class="text-muted">Loading distributed cameras...</small>
+                </div>
+            `;
     }
 }

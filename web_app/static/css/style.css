@@ -37,6 +37,54 @@ body {
     font-weight: 600;
 }
 
+/* Tab Navigation */
+.nav-tabs {
+    border-bottom: 2px solid #e9ecef;
+    margin-bottom: 0;
+}
+
+.nav-tabs .nav-link {
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: #6c757d;
+    font-weight: 500;
+    padding: 1rem 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.nav-tabs .nav-link:hover {
+    border-color: transparent;
+    border-bottom-color: #007bff;
+    color: #007bff;
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+.nav-tabs .nav-link.active {
+    color: #007bff;
+    background-color: transparent;
+    border-color: transparent;
+    border-bottom-color: #007bff;
+    font-weight: 600;
+}
+
+.nav-tabs .nav-link i {
+    margin-right: 0.5rem;
+}
+
+/* Tab Content */
+.tab-content {
+    padding: 1.5rem 0;
+}
+
+.tab-pane {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* Video Display */
 .video-container {
     position: relative;
@@ -266,6 +314,48 @@ body {
     pointer-events: none;
 }
 
+/* Mobile Bottom Navigation */
+.nav-pills .nav-link {
+    border-radius: 8px;
+    padding: 0.5rem 0.25rem;
+    color: #6c757d;
+    transition: all 0.3s ease;
+    border: none;
+    background: transparent;
+}
+
+.nav-pills .nav-link.active {
+    background-color: var(--primary-color);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
+.nav-pills .nav-link:hover {
+    color: var(--primary-color);
+    background-color: rgba(0, 123, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.nav-pills .nav-link i {
+    font-size: 1.2rem;
+}
+
+.nav-pills .nav-link small {
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+/* Mobile Navigation Shadow */
+.fixed-bottom {
+    z-index: 1030;
+}
+
+/* Mobile Header */
+.mobile-header {
+    background: linear-gradient(135deg, #343a40 0%, #495057 100%);
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .video-container {
@@ -279,6 +369,94 @@ body {
     .detection-entry .detection-header {
         flex-direction: column;
         align-items: flex-start;
+    }
+    
+    /* Tab navigation responsive */
+    .nav-tabs .nav-link {
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .nav-tabs .nav-link i {
+        margin-right: 0.25rem;
+    }
+    
+    /* Tab content responsive */
+    .tab-content {
+        padding: 1rem 0;
+    }
+    
+    /* Settings panel responsive */
+    .settings-panel .col-md-6 {
+        margin-bottom: 1rem;
+    }
+    
+    /* Mobile snapshot modal adjustments */
+    .snapshot-fullscreen-modal .row {
+        flex-direction: column;
+    }
+    
+    .snapshot-fullscreen-modal .col-lg-8,
+    .snapshot-fullscreen-modal .col-lg-4 {
+        flex: none;
+        max-width: 100%;
+    }
+    
+    .snapshot-fullscreen-modal .col-lg-8 {
+        order: 1;
+        min-height: 50vh;
+    }
+    
+    .snapshot-fullscreen-modal .col-lg-4 {
+        order: 2;
+        max-height: 50vh;
+        overflow-y: auto;
+    }
+    
+    /* Timeline responsive adjustments */
+    .timeline-event {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .timeline-event-image {
+        width: 100%;
+        max-width: 300px;
+        height: 150px;
+        margin: 0 auto 1rem auto;
+    }
+    
+    .timeline-event-content {
+        width: 100%;
+    }
+}
+
+@media (max-width: 576px) {
+    .nav-tabs .nav-link {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+    
+    .nav-tabs .nav-link span {
+        display: none;
+    }
+    
+    .nav-tabs .nav-link i {
+        margin-right: 0;
+        font-size: 1.1rem;
+    }
+    
+    /* Mobile bottom nav adjustments */
+    .nav-pills .nav-link {
+        padding: 0.4rem 0.2rem;
+    }
+    
+    .nav-pills .nav-link i {
+        font-size: 1rem;
+    }
+    
+    .nav-pills .nav-link small {
+        font-size: 0.65rem;
     }
 }
 
@@ -360,18 +538,20 @@ body {
 
 /* Timeline Events */
 .timeline-events {
-    max-height: 400px;
-    overflow-y: auto;
+    /* Removed max-height and overflow-y to eliminate scroll */
 }
 
 .timeline-event {
     padding: 1rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
     background-color: #f8f9fa;
     border-radius: 8px;
     border-left: 4px solid var(--success-color);
     transition: all 0.3s ease;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
 }
 
 .timeline-event:hover {
@@ -382,6 +562,40 @@ body {
 .timeline-event.new {
     animation: timelineSlideIn 0.5s ease-out;
     border-left-color: var(--warning-color);
+}
+
+/* Timeline Event Image */
+.timeline-event-image {
+    flex-shrink: 0;
+    width: 200px;
+    height: 120px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 2px solid #e9ecef;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.timeline-event-image:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.timeline-event-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: all 0.3s ease;
+}
+
+.timeline-event-image:hover img {
+    transform: scale(1.05);
+}
+
+/* Timeline Event Content */
+.timeline-event-content {
+    flex-grow: 1;
+    min-width: 0;
 }
 
 .timeline-event-header {
@@ -428,26 +642,6 @@ body {
     border-radius: 12px;
     font-size: 0.75rem;
     font-weight: 500;
-}
-
-.timeline-event-snapshot {
-    margin-top: 0.5rem;
-    text-align: center;
-}
-
-.timeline-event-snapshot img {
-    max-width: 100%;
-    max-height: 120px;
-    border-radius: 4px;
-    border: 2px solid #e9ecef;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.timeline-event-snapshot img:hover {
-    transform: scale(1.05);
-    border-color: var(--primary-color);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
 .timeline-event-meta {
@@ -518,6 +712,65 @@ body {
 .timeline-modal img {
     max-width: 100%;
     border-radius: 4px;
+}
+
+/* Fullscreen Snapshot Modal */
+.snapshot-fullscreen-modal .modal-dialog {
+    max-width: none;
+    margin: 0;
+}
+
+.snapshot-fullscreen-modal .modal-content {
+    border: none;
+    border-radius: 0;
+}
+
+.snapshot-fullscreen-img {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.objects-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.object-tag {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border-left: 3px solid var(--primary-color);
+}
+
+.gemini-analysis-content {
+    max-height: 300px;
+    overflow-y: auto;
+    font-size: 0.875rem;
+}
+
+.gemini-analysis-content .badge {
+    font-size: 0.75rem;
+}
+
+/* Image controls */
+.image-controls {
+    border-bottom: 1px solid #dee2e6;
+}
+
+.image-controls .btn {
+    transition: all 0.2s ease;
+}
+
+.image-controls .btn:hover {
+    transform: translateY(-1px);
 }
 
 /* Dark mode support */

@@ -27,6 +27,9 @@ try:
     from backend.video_processor import VideoProcessor
     from backend.camera_handler import CameraHandler
     from backend.config import Config
+    from backend.camera_detection_service import get_camera_detection_service
+    from backend.improved_image_matcher import get_improved_matcher
+    from backend.distributed_camera_manager import get_distributed_camera_manager
 except ImportError as e:
     print(f"Error importing backend modules: {e}")
     print("Make sure you're running from the project root directory")
@@ -229,11 +232,145 @@ class WebVideoProcessor:
 # Initialize web video processor
 web_processor = WebVideoProcessor()
 
+# Initialize camera detection service
+camera_detection_service = get_camera_detection_service()
+
+# Initialize distributed camera manager
+distributed_manager = get_distributed_camera_manager()
+
+# Setup camera detection callbacks for real-time updates
+def setup_camera_detection_callbacks():
+    """Setup callbacks for camera detection events."""
+    
+    def on_detection(results):
+        """Callback for detection events."""
+        try:
+            detection_data = {
+                'timestamp': datetime.now().isoformat(),
+                'results': results,
+                'count': len(results)
+            }
+            socketio.emit('camera_detection_update', detection_data)
+            logger.info(f"Emitted camera detection update: {len(results)} matches")
+        except Exception as e:
+            logger.error(f"Error emitting detection update: {e}")
+    
+    def on_alert(alert_data):
+        """Callback for high-confidence alerts."""
+        try:
+            alert_data['timestamp'] = datetime.now().isoformat()
+            socketio.emit('camera_detection_alert', alert_data)
+            logger.warning(f"Emitted camera detection alert: {alert_data.get('severity', 'UNKNOWN')}")
+        except Exception as e:
+            logger.error(f"Error emitting alert: {e}")
+    
+    def on_status_change(status_data):
+        """Callback for status changes."""
+        try:
+            socketio.emit('camera_detection_status', status_data)
+            logger.info(f"Emitted camera detection status: {status_data.get('status', 'UNKNOWN')}")
+        except Exception as e:
+            logger.error(f"Error emitting status change: {e}")
+    
+    # Register callbacks
+    camera_detection_service.add_detection_callback(on_detection)
+    camera_detection_service.add_alert_callback(on_alert)
+    camera_detection_service.add_status_callback(on_status_change)
+    
+    logger.info("Camera detection callbacks setup complete")
+
+# Setup callbacks
+setup_camera_detection_callbacks()
+
+# Setup distributed camera manager callbacks
+def setup_distributed_manager_callbacks():
+    """Setup callbacks for distributed camera manager events."""
+    
+    def on_distributed_frame(frame_data):
+        """Callback for distributed frame processing."""
+        try:
+            # Convert frame to base64 for web display
+            processed_frame = frame_data['processed_frame']
+            _, buffer = cv2.imencode('.jpg', processed_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            processed_base64 = base64.b64encode(buffer).decode('utf-8')
+            
+            # Raw frame if available
+            raw_base64 = None
+            if frame_data.get('raw_frame') is not None:
+                raw_frame = frame_data['raw_frame']
+                _, raw_buffer = cv2.imencode('.jpg', raw_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                raw_base64 = base64.b64encode(raw_buffer).decode('utf-8')
+            
+            # Emit frame data to web clients
+            frame_info = {
+                'stream_id': frame_data['stream_id'],
+                'frame_number': frame_data['frame_number'],
+                'processed_frame': processed_base64,
+                'raw_frame': raw_base64,
+                'timestamp': frame_data['timestamp']
+            }
+            socketio.emit('distributed_frame_update', frame_info)
+            
+        except Exception as e:
+            logger.error(f"Error handling distributed frame: {e}")
+    
+    def on_distributed_detection(detection_data):
+        """Callback for distributed detection events."""
+        try:
+            detection_info = {
+                'stream_id': detection_data['stream_id'],
+                'frame_number': detection_data['frame_number'],
+                'detections': detection_data['detections'],
+                'timestamp': detection_data['timestamp']
+            }
+            socketio.emit('distributed_detection_update', detection_info)
+            
+        except Exception as e:
+            logger.error(f"Error handling distributed detection: {e}")
+    
+    def on_face_analysis_detection(detection_data):
+        """Callback for face analysis detection events."""
+        try:
+            socketio.emit('face_analysis_detection', detection_data)
+            
+        except Exception as e:
+            logger.error(f"Error handling face analysis detection: {e}")
+    
+    def on_client_change(change_type, client):
+        """Callback for client changes."""
+        try:
+            client_info = {
+                'change_type': change_type,
+                'client': client.get_status(),
+                'timestamp': datetime.now().isoformat()
+            }
+            socketio.emit('distributed_client_change', client_info)
+            
+        except Exception as e:
+            logger.error(f"Error handling client change: {e}")
+    
+    # Register callbacks
+    distributed_manager.add_frame_callback(on_distributed_frame)
+    distributed_manager.add_detection_callback(on_distributed_detection)
+    distributed_manager.add_detection_callback(on_face_analysis_detection)  # For face analysis
+    distributed_manager.add_client_callback(on_client_change)
+    
+    logger.info("Distributed camera manager callbacks setup complete")
+
+# Setup distributed manager callbacks
+setup_distributed_manager_callbacks()
+
 
 @app.route('/')
 def index():
     """Main page."""
     return render_template('index.html')
+
+
+@app.route('/distributed')
+def distributed():
+    """Distributed camera system page."""
+    return render_template('distributed.html')
 
 
 @app.route('/api/cameras')
@@ -986,6 +1123,577 @@ def handle_stats_request():
     """Handle stats request from client."""
     global processing_stats
     emit('stats_update', processing_stats)
+
+
+# Distributed Camera Management SocketIO Events
+@socketio.on('client_register')
+def handle_client_register(data):
+    """Handle camera client registration."""
+    try:
+        client_id = data.get('client_id')
+        client_type = data.get('client_type', 'camera')
+        
+        if not client_id:
+            emit('error', {'message': 'Client ID required'})
+            return
+        
+        client = distributed_manager.register_client(client_id, client_type)
+        emit('client_registered', {
+            'client_id': client_id,
+            'status': 'success',
+            'message': f'Client {client_id} registered successfully'
+        })
+        
+        logger.info(f"✅ Camera client registered: {client_id}")
+        
+    except Exception as e:
+        logger.error(f"Error registering client: {e}")
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('camera_info')
+def handle_camera_info(data):
+    """Handle camera information from client."""
+    try:
+        client_id = data.get('client_id')
+        camera_info = data.get('cameras', {})
+        
+        if not client_id:
+            emit('error', {'message': 'Client ID required'})
+            return
+        
+        distributed_manager.add_camera_info(client_id, {'cameras': camera_info})
+        
+        logger.info(f"📹 Camera info received from {client_id}: {len(camera_info)} cameras")
+        
+    except Exception as e:
+        logger.error(f"Error handling camera info: {e}")
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('camera_frame')
+def handle_camera_frame(data):
+    """Handle camera frame from client."""
+    try:
+        client_id = data.get('client_id')
+        camera_index = data.get('camera_index')
+        frame_data = data.get('frame_data')
+        
+        if not all([client_id, camera_index is not None, frame_data]):
+            return
+        
+        success = distributed_manager.handle_camera_frame(client_id, camera_index, frame_data)
+        
+        if not success:
+            logger.warning(f"Failed to process frame from {client_id}, camera {camera_index}")
+        
+    except Exception as e:
+        logger.error(f"Error handling camera frame: {e}")
+
+
+@socketio.on('start_streaming')
+def handle_start_streaming(data):
+    """Handle start streaming request."""
+    try:
+        client_id = data.get('client_id')
+        camera_index = data.get('camera_index', 0)
+        
+        if not client_id:
+            emit('error', {'message': 'Client ID required'})
+            return
+        
+        # Update client heartbeat
+        distributed_manager.update_client_heartbeat(client_id)
+        
+        # Send start streaming command to client
+        socketio.emit('start_streaming', {
+            'camera_index': camera_index
+        }, room=client_id)
+        
+        logger.info(f"📡 Start streaming request sent to {client_id}, camera {camera_index}")
+        
+    except Exception as e:
+        logger.error(f"Error starting streaming: {e}")
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('stop_streaming')
+def handle_stop_streaming(data):
+    """Handle stop streaming request."""
+    try:
+        client_id = data.get('client_id')
+        camera_index = data.get('camera_index', 0)
+        
+        if not client_id:
+            emit('error', {'message': 'Client ID required'})
+            return
+        
+        # Send stop streaming command to client
+        socketio.emit('stop_streaming', {
+            'camera_index': camera_index
+        }, room=client_id)
+        
+        logger.info(f"⏹️ Stop streaming request sent to {client_id}, camera {camera_index}")
+        
+    except Exception as e:
+        logger.error(f"Error stopping streaming: {e}")
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection."""
+    logger.info(f"Client disconnected: {request.sid}")
+
+
+# Camera Detection API Endpoints
+@app.route('/api/camera_detection/start', methods=['POST'])
+def start_camera_detection():
+    """Start camera-based offender detection."""
+    try:
+        data = request.get_json() or {}
+        camera_index = data.get('camera_index', 0)
+        detection_interval = data.get('detection_interval', 2.0)
+        confidence_threshold = data.get('confidence_threshold', 0.3)
+        
+        # Configure service
+        camera_detection_service.set_detection_interval(detection_interval)
+        camera_detection_service.set_confidence_threshold(confidence_threshold)
+        
+        # Start detection
+        if camera_detection_service.start_detection(camera_index):
+            return jsonify({
+                'status': 'started',
+                'camera_index': camera_index,
+                'detection_interval': detection_interval,
+                'confidence_threshold': confidence_threshold
+            })
+        else:
+            return jsonify({'error': 'Failed to start camera detection'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error starting camera detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/stop', methods=['POST'])
+def stop_camera_detection():
+    """Stop camera-based offender detection."""
+    try:
+        camera_detection_service.stop_detection()
+        return jsonify({'status': 'stopped'})
+    except Exception as e:
+        logger.error(f"Error stopping camera detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/pause', methods=['POST'])
+def pause_camera_detection():
+    """Pause camera-based offender detection."""
+    try:
+        camera_detection_service.pause_detection()
+        return jsonify({'status': 'paused'})
+    except Exception as e:
+        logger.error(f"Error pausing camera detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/resume', methods=['POST'])
+def resume_camera_detection():
+    """Resume camera-based offender detection."""
+    try:
+        camera_detection_service.resume_detection()
+        return jsonify({'status': 'resumed'})
+    except Exception as e:
+        logger.error(f"Error resuming camera detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/status')
+def get_camera_detection_status():
+    """Get camera detection service status."""
+    try:
+        status = camera_detection_service.get_status()
+        return jsonify(status)
+    except Exception as e:
+        logger.error(f"Error getting camera detection status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/stats')
+def get_camera_detection_stats():
+    """Get camera detection statistics."""
+    try:
+        stats = camera_detection_service.get_detection_stats()
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"Error getting camera detection stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/recent_detections')
+def get_recent_detections():
+    """Get recent detection results."""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        detections = camera_detection_service.get_recent_detections(limit)
+        return jsonify({
+            'detections': detections,
+            'count': len(detections)
+        })
+    except Exception as e:
+        logger.error(f"Error getting recent detections: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/test_camera/<int:camera_index>')
+def test_camera_detection(camera_index):
+    """Test camera for detection capabilities."""
+    try:
+        test_result = camera_detection_service.test_camera(camera_index)
+        return jsonify(test_result)
+    except Exception as e:
+        logger.error(f"Error testing camera {camera_index}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/discover_cameras')
+def discover_cameras_for_detection():
+    """Discover cameras available for detection."""
+    try:
+        max_cameras = request.args.get('max_cameras', 5, type=int)
+        cameras = camera_detection_service.discover_cameras(max_cameras)
+        return jsonify({
+            'cameras': cameras,
+            'count': len(cameras)
+        })
+    except Exception as e:
+        logger.error(f"Error discovering cameras: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/detect_image', methods=['POST'])
+def detect_offender_in_image():
+    """Detect offenders in an uploaded image."""
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'No image file provided'}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if file:
+            # Secure filename and save
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"{timestamp}_{filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # Get detection parameters
+            threshold = float(request.form.get('threshold', 0.3))
+            
+            # Run detection
+            image_matcher = get_improved_matcher()
+            results = image_matcher.identify_person_in_image(filepath, threshold=threshold)
+            
+            # Clean up uploaded file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            
+            return jsonify({
+                'results': results,
+                'count': len(results),
+                'threshold': threshold
+            })
+        else:
+            return jsonify({'error': 'Invalid file'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error detecting offenders in image: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera_detection/database_stats')
+def get_detection_database_stats():
+    """Get database statistics for detection."""
+    try:
+        image_matcher = get_improved_matcher()
+        stats = image_matcher.get_database_stats()
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"Error getting database stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Distributed Camera Management API Endpoints
+@app.route('/api/distributed/clients')
+def get_distributed_clients():
+    """Get all connected camera clients."""
+    try:
+        clients_status = distributed_manager.get_all_clients_status()
+        return jsonify({
+            'clients': clients_status,
+            'count': len(clients_status)
+        })
+    except Exception as e:
+        logger.error(f"Error getting distributed clients: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/distributed/clients/<client_id>')
+def get_distributed_client(client_id):
+    """Get specific client status."""
+    try:
+        client_status = distributed_manager.get_client_status(client_id)
+        if not client_status:
+            return jsonify({'error': 'Client not found'}), 404
+        
+        return jsonify(client_status)
+    except Exception as e:
+        logger.error(f"Error getting client {client_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/distributed/processing')
+def get_processing_status():
+    """Get processing status for all streams."""
+    try:
+        processing_status = distributed_manager.get_processing_status()
+        return jsonify(processing_status)
+    except Exception as e:
+        logger.error(f"Error getting processing status: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/distributed/start_processing', methods=['POST'])
+def start_distributed_processing():
+    """Start processing a camera stream."""
+    try:
+        data = request.get_json()
+        client_id = data.get('client_id')
+        camera_index = data.get('camera_index', 0)
+        confidence = data.get('confidence', 0.25)
+        enable_tracking = data.get('enable_tracking', True)
+        target_classes = data.get('target_classes', None)
+        
+        if not client_id:
+            return jsonify({'error': 'Client ID required'}), 400
+        
+        # Generate stream ID
+        stream_id = f"{client_id}_{camera_index}"
+        
+        success = distributed_manager.start_processing_stream(
+            stream_id=stream_id,
+            client_id=client_id,
+            camera_index=camera_index,
+            confidence=confidence,
+            enable_tracking=enable_tracking,
+            target_classes=target_classes
+        )
+        
+        if success:
+            return jsonify({
+                'status': 'started',
+                'stream_id': stream_id,
+                'client_id': client_id,
+                'camera_index': camera_index
+            })
+        else:
+            return jsonify({'error': 'Failed to start processing'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error starting distributed processing: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/distributed/stop_processing', methods=['POST'])
+def stop_distributed_processing():
+    """Stop processing a camera stream."""
+    try:
+        data = request.get_json()
+        stream_id = data.get('stream_id')
+        
+        if not stream_id:
+            return jsonify({'error': 'Stream ID required'}), 400
+        
+        distributed_manager.stop_processing_stream(stream_id)
+        
+        return jsonify({
+            'status': 'stopped',
+            'stream_id': stream_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error stopping distributed processing: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/distributed/stats')
+def get_distributed_stats():
+    """Get distributed system statistics."""
+    try:
+        stats = distributed_manager.get_stats()
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"Error getting distributed stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/distributed/cleanup', methods=['POST'])
+def cleanup_inactive_clients():
+    """Clean up inactive clients."""
+    try:
+        timeout = request.args.get('timeout', 30, type=int)
+        distributed_manager.cleanup_inactive_clients(timeout)
+        
+        return jsonify({
+            'status': 'cleanup_completed',
+            'timeout_seconds': timeout
+        })
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up inactive clients: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Simple HTTP endpoint for camera frames
+@app.route('/api/send_frame', methods=['POST'])
+def receive_frame():
+    """Receive frame from simple camera sender."""
+    try:
+        data = request.get_json()
+        client_id = data.get('client_id')
+        camera_index = data.get('camera_index', 0)
+        frame_data = data.get('frame_data')
+        frame_number = data.get('frame_number', 0)
+        
+        if not all([client_id, frame_data]):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        # Register client if not exists
+        if client_id not in [c.client_id for c in distributed_manager.clients.values()]:
+            distributed_manager.register_client(client_id, "camera")
+        
+        # Handle the frame
+        success = distributed_manager.handle_camera_frame(client_id, camera_index, frame_data)
+        
+        if success:
+            return jsonify({'status': 'received', 'frame_number': frame_number})
+        else:
+            return jsonify({'error': 'Failed to process frame'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error receiving frame: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Family Member Management API Endpoints
+@app.route('/api/family/members')
+def get_family_members():
+    """Get all family members."""
+    try:
+        family_members = distributed_manager.get_family_members()
+        return jsonify({
+            'family_members': family_members,
+            'count': len(family_members)
+        })
+    except Exception as e:
+        logger.error(f"Error getting family members: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/family/members', methods=['POST'])
+def add_family_member():
+    """Add a family member."""
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        image_path = data.get('image_path')
+        
+        if not name or not image_path:
+            return jsonify({'error': 'Name and image_path required'}), 400
+        
+        success = distributed_manager.add_family_member(name, image_path)
+        
+        if success:
+            return jsonify({
+                'status': 'added',
+                'name': name,
+                'message': f'Family member {name} added successfully'
+            })
+        else:
+            return jsonify({'error': 'Failed to add family member'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error adding family member: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/family/members/<name>', methods=['DELETE'])
+def remove_family_member(name):
+    """Remove a family member."""
+    try:
+        success = distributed_manager.remove_family_member(name)
+        
+        if success:
+            return jsonify({
+                'status': 'removed',
+                'name': name,
+                'message': f'Family member {name} removed successfully'
+            })
+        else:
+            return jsonify({'error': 'Family member not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error removing family member: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/family/upload', methods=['POST'])
+def upload_family_member_photo():
+    """Upload photo for family member."""
+    try:
+        if 'photo' not in request.files:
+            return jsonify({'error': 'No photo file provided'}), 400
+        
+        file = request.files['photo']
+        name = request.form.get('name')
+        
+        if not name:
+            return jsonify({'error': 'Name required'}), 400
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if file:
+            # Secure filename and save
+            from werkzeug.utils import secure_filename
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"family_{name}_{timestamp}_{filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # Add to family members
+            success = distributed_manager.add_family_member(name, filepath)
+            
+            if success:
+                return jsonify({
+                    'status': 'uploaded',
+                    'name': name,
+                    'filepath': filepath,
+                    'message': f'Family member {name} added successfully'
+                })
+            else:
+                return jsonify({'error': 'Failed to add family member'}), 500
+        else:
+            return jsonify({'error': 'Invalid file'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error uploading family member photo: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
