@@ -447,3 +447,4 @@ def initialize_camera_detection_service(config: Optional[Config] = None) -> Came
     global _camera_detection_service
     _camera_detection_service = CameraDetectionService(config)
     return _camera_detection_service
+

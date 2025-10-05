@@ -155,6 +155,10 @@ class SnapshotAnalysisService:
                     if os.path.exists(temp_face_path):
                         os.remove(temp_face_path)
             
+            # Create labeled snapshot with names
+            labeled_snapshot = self._create_labeled_snapshot(frame, analysis_result)
+            analysis_result['labeled_snapshot'] = labeled_snapshot
+            
             # Notify callbacks
             self._notify_analysis(analysis_result)
             
@@ -170,6 +174,44 @@ class SnapshotAnalysisService:
             analysis_result['error'] = str(e)
         
         return analysis_result
+    
+    def _create_labeled_snapshot(self, frame: np.ndarray, analysis_result: Dict[str, Any]) -> Optional[np.ndarray]:
+        """
+        Create a labeled snapshot with names drawn on detected faces.
+        
+        Args:
+            frame: Original frame
+            analysis_result: Analysis results containing detections
+            
+        Returns:
+            Labeled frame with names drawn on faces
+        """
+        try:
+            if frame is None:
+                return None
+            
+            # Combine all detections for labeling
+            all_detections = []
+            
+            # Add sex offender detections
+            for detection in analysis_result.get('sex_offenders', []):
+                all_detections.append(detection)
+            
+            # Add family member detections
+            for detection in analysis_result.get('family_members', []):
+                all_detections.append(detection)
+            
+            if not all_detections:
+                return frame  # Return original frame if no detections
+            
+            # Use the image matcher's labeling function
+            labeled_frame = self.image_matcher.draw_face_labels(frame, all_detections)
+            
+            return labeled_frame
+            
+        except Exception as e:
+            logger.error(f"Error creating labeled snapshot: {e}")
+            return frame  # Return original frame on error
     
     def _check_sex_offender(self, face_path: str, face_bbox: Tuple[int, int, int, int]) -> List[Dict]:
         """Check if a face matches a known sex offender."""

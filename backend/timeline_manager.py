@@ -148,9 +148,9 @@ class TimelineManager:
         if get_snapshot_analysis_service:
             try:
                 self.snapshot_analysis_service = get_snapshot_analysis_service()
-                logger.info("✅ Snapshot analysis service initialized")
+                self.logger.info("✅ Snapshot analysis service initialized")
             except Exception as e:
-                logger.warning(f"⚠️ Could not initialize snapshot analysis service: {e}")
+                self.logger.warning(f"⚠️ Could not initialize snapshot analysis service: {e}")
         
         # Internal tracking (not serialized)
         self._unique_objects = set()  # Track unique object IDs to avoid double counting
@@ -571,12 +571,12 @@ class TimelineManager:
                     
                     # Log analysis results
                     if analysis_result.get('sex_offenders'):
-                        logger.warning(f"🚨 SEX OFFENDER DETECTED in snapshot {event_id}: {len(analysis_result['sex_offenders'])} matches")
+                        self.logger.warning(f"🚨 SEX OFFENDER DETECTED in snapshot {event_id}: {len(analysis_result['sex_offenders'])} matches")
                     if analysis_result.get('family_members'):
-                        logger.info(f"👨‍👩‍👧‍👦 FAMILY MEMBER detected in snapshot {event_id}: {len(analysis_result['family_members'])} matches")
+                        self.logger.info(f"👨‍👩‍👧‍👦 FAMILY MEMBER detected in snapshot {event_id}: {len(analysis_result['family_members'])} matches")
                         
                 except Exception as e:
-                    logger.error(f"Error analyzing snapshot: {e}")
+                    self.logger.error(f"Error analyzing snapshot: {e}")
             
             # Return the annotated path as the primary snapshot
             return str(annotated_path)

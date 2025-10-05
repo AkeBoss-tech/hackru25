@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple startup script for the YOLOv8 Video Processing Web Application.
+Simple startup script for Sentri.
 Uses basic Flask without SocketIO for testing.
 """
 
@@ -52,7 +52,7 @@ def find_available_port(start_port=5001, max_attempts=10):
 from app import app
 
 if __name__ == '__main__':
-    print("🚀 Starting YOLOv8 Video Processing Web Application (Simple Mode)...")
+    print("🚀 Starting Sentri (Simple Mode)...")
     print("🔧 Checking and cleaning up port conflicts...")
     
     # Kill any existing processes on port 5001

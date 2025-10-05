@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo script for the YOLOv8 Video Processing Web Application.
+Demo script for Sentri.
 Shows how to use the web app programmatically.
 """
 

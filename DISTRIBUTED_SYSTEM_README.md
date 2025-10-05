@@ -97,7 +97,7 @@ This system allows you to deploy multiple camera clients on different machines t
 1. **Clone the repository** (on all machines):
    ```bash
    git clone <your-repo-url>
-   cd hackru25
+   cd sentri
    ```
 
 2. **Install dependencies** (on all machines):

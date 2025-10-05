@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple startup script for the YOLOv8 Video Processing Web Application.
+Simple startup script for Sentri.
 Automatically handles port conflicts by killing existing processes.
 """
 
@@ -58,7 +58,7 @@ def find_available_port(start_port=5001, max_attempts=10):
 from app import app, socketio
 
 if __name__ == '__main__':
-    print("🚀 Starting YOLOv8 Video Processing Web Application...")
+    print("🚀 Starting Sentri...")
     print("🔧 Checking and cleaning up port conflicts...")
     
     # Kill any existing processes on port 5001

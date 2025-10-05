@@ -1,4 +1,4 @@
-# YOLOv8 Video Processing Web Application
+# Sentri
 
 A modern web interface for real-time video processing using YOLOv8 object detection and tracking.
 

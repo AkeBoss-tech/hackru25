@@ -1,5 +1,5 @@
 /**
- * Frontend JavaScript for YOLOv8 Video Processing Dashboard
+ * Frontend JavaScript for Sentri
  * Handles real-time communication with the backend via WebSocket
  */
 
@@ -41,6 +41,7 @@ let familyMemberDetections = [];
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
+    requestNotificationPermission();
     
     // Add keyboard support for fullscreen and tab navigation
     document.addEventListener('keydown', function(e) {
@@ -2990,3 +2991,84 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Browser Notification Functions
+function requestNotificationPermission() {
+    if ('Notification' in window) {
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().then(function(permission) {
+                if (permission === 'granted') {
+                    showNotification('Notifications Enabled', 'You will now receive security alerts and updates.', 'info');
+                    console.log('Notification permission granted');
+                } else {
+                    console.log('Notification permission denied');
+                }
+            });
+        } else if (Notification.permission === 'granted') {
+            console.log('Notification permission already granted');
+        } else {
+            console.log('Notification permission denied');
+        }
+    } else {
+        console.log('This browser does not support notifications');
+    }
+}
+
+function showNotification(title, body, type = 'info') {
+    if ('Notification' in window && Notification.permission === 'granted') {
+        const notification = new Notification(title, {
+            body: body,
+            icon: '/static/images/security-icon.png',
+            badge: '/static/images/security-badge.png',
+            tag: 'security-alert',
+            requireInteraction: type === 'critical',
+            silent: type === 'info'
+        });
+        
+        // Auto-close after 5 seconds for non-critical notifications
+        if (type !== 'critical') {
+            setTimeout(() => {
+                notification.close();
+            }, 5000);
+        }
+        
+        // Handle notification click
+        notification.onclick = function() {
+            window.focus();
+            notification.close();
+        };
+        
+        return notification;
+    } else {
+        console.log('Cannot show notification: permission not granted or not supported');
+        return null;
+    }
+}
+
+function showSecurityAlert(title, message, severity = 'warning') {
+    const alertTypes = {
+        'critical': '🚨 CRITICAL ALERT',
+        'warning': '⚠️ WARNING',
+        'info': 'ℹ️ INFO',
+        'success': '✅ SUCCESS'
+    };
+    
+    const fullTitle = alertTypes[severity] || alertTypes['info'];
+    const fullMessage = `${title}: ${message}`;
+    
+    // Show browser notification
+    showNotification(fullTitle, fullMessage, severity);
+    
+    // Also show in-app notification
+    addNotification({
+        title: fullTitle,
+        message: fullMessage,
+        severity: severity,
+        timestamp: new Date().toISOString()
+    });
+}
+
+// Test notification function (for testing purposes)
+function testNotification() {
+    showNotification('Test Alert', 'This is a test notification to verify the system is working correctly.', 'info');
+}

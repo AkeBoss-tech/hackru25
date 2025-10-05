@@ -1,4 +1,4 @@
-# YOLOv8 Video Processing System
+# Sentri
 
 A comprehensive video processing system with YOLOv8 object detection, tracking, and a modern web interface.
 
@@ -28,7 +28,7 @@ A comprehensive video processing system with YOLOv8 object detection, tracking, 
 ## 📁 Project Structure
 
 ```
-hackru25/
+sentri/
 ├── backend/                 # Core video processing backend
 │   ├── video_processor.py   # Main video processing class
 │   ├── camera_handler.py    # Camera management utilities
@@ -53,6 +53,14 @@ hackru25/
 ├── scripts/                # Utility scripts
 ├── sex-offenders/          # Data and images
 ├── requirements.txt        # Python dependencies
+├── start_server.py         # Central processing server
+├── simple_camera_sender.py # Simple camera sender script
+├── camera_client.py        # Professional camera client
+├── network_camera_sender.py # Network camera sender with discovery
+├── start_camera_client.sh  # Camera client startup script
+├── start_network_camera.sh # Network camera startup script
+├── run_camera_sender.sh    # Legacy camera sender script
+├── SIMPLE_SETUP.md         # Simple setup documentation
 └── README.md              # This file
 ```
 
@@ -62,7 +70,7 @@ hackru25/
 
 ```bash
 git clone <repository-url>
-cd hackru25
+cd sentri
 ```
 
 ### 2. Create Virtual Environment
@@ -93,7 +101,77 @@ cp gemini.env.example .env
 # The system will automatically use GEMINI_API_KEY from your .env file
 ```
 
+### 6. Make Shell Scripts Executable
+
+```bash
+chmod +x start_camera_client.sh
+chmod +x start_network_camera.sh
+chmod +x run_camera_sender.sh
+```
+
 ## 🚀 Quick Start
+
+### Single Camera Systems
+
+#### Option 1: Simple Camera Sender (Easiest)
+For quick setup with minimal configuration:
+
+```bash
+# Start the central server (on your main machine)
+python3 start_server.py
+
+# Send camera feed (on any machine with camera)
+python3 simple_camera_sender.py
+```
+
+**Configuration**: Edit these lines in `simple_camera_sender.py`:
+```python
+SERVER_URL = "http://192.168.1.100:5002"  # Your main server IP
+CLIENT_NAME = "Office_Camera"  # Name this camera
+```
+
+#### Option 2: Network Camera Sender (Advanced)
+For network discovery and multiple options:
+
+```bash
+# Auto-discover servers on network
+python3 network_camera_sender.py --discover
+
+# Connect to specific server
+python3 network_camera_sender.py --server http://192.168.1.100:5002 --name "Office_Camera"
+
+# List available cameras
+python3 network_camera_sender.py --list-cameras
+
+# Use specific camera index
+python3 network_camera_sender.py --camera 1 --name "Security_Cam"
+```
+
+#### Option 3: Camera Client (Professional)
+For advanced features and multiple camera support:
+
+```bash
+# Using shell script (recommended)
+chmod +x start_camera_client.sh
+./start_camera_client.sh
+
+# Direct command with options
+python3 camera_client.py --server http://192.168.1.100:5002 --max-cameras 3 --quality 90 --fps 20
+
+# Discover cameras only
+python3 camera_client.py --discover-only
+```
+
+#### Shell Scripts
+Pre-configured startup scripts for easy deployment:
+
+```bash
+# Camera client with defaults
+./start_camera_client.sh
+
+# Network camera sender with auto-discovery
+./start_network_camera.sh
+```
 
 ### Backend Usage
 
@@ -132,6 +210,114 @@ print(f"Total detections: {stats['total_detections']}")
    - Adjust confidence threshold
    - Enable/disable tracking
    - Click "Start Processing"
+
+### Distributed System
+
+1. **Start central server**:
+   ```bash
+   python3 start_server.py
+   ```
+
+2. **Connect cameras** using any of the single camera options above
+
+3. **View everything**: Open `http://localhost:5002/distributed`
+
+## 📋 Shell Scripts Reference
+
+### Available Shell Scripts
+
+#### `start_camera_client.sh`
+Professional camera client with comprehensive features:
+```bash
+./start_camera_client.sh
+```
+**Features:**
+- Auto-discovers cameras (up to 5)
+- Connects to main server via SocketIO
+- Quality: 80, FPS: 15 (configurable)
+- Handles multiple camera streams
+- Automatic reconnection on network issues
+
+#### `start_network_camera.sh`
+Network camera sender with auto-discovery:
+```bash
+./start_network_camera.sh
+```
+**Features:**
+- Auto-discovers servers on local network
+- Installs dependencies if missing
+- Simple HTTP-based streaming
+- Works on any machine with Python 3
+
+#### `run_camera_sender.sh`
+Legacy camera sender script:
+```bash
+./run_camera_sender.sh
+```
+
+### Command Line Examples
+
+#### Camera Discovery
+```bash
+# List all available cameras
+python3 network_camera_sender.py --list-cameras
+
+# Discover cameras with camera client
+python3 camera_client.py --discover-only
+
+# Test camera 0 specifically
+python3 -c "import cv2; cap = cv2.VideoCapture(0); print('Camera 0:', cap.isOpened()); cap.release()"
+```
+
+#### Network Discovery
+```bash
+# Find all servers on network
+python3 network_camera_sender.py --discover
+
+# Test server connectivity
+curl http://192.168.1.100:5002/api/distributed/stats
+
+# Ping test
+ping -c 3 192.168.1.100
+```
+
+#### Performance Tuning
+```bash
+# Low resource usage (good for older machines)
+python3 camera_client.py --quality 60 --fps 10 --max-cameras 2
+
+# High quality (good for detailed detection)
+python3 camera_client.py --quality 95 --fps 25 --max-cameras 1
+
+# Balanced settings (default)
+python3 camera_client.py --quality 80 --fps 15 --max-cameras 3
+```
+
+#### Multiple Camera Setup
+```bash
+# Method 1: Multiple simple senders
+python3 simple_camera_sender.py &  # Camera 1
+# Edit CLIENT_NAME in script, then:
+python3 simple_camera_sender.py &  # Camera 2
+
+# Method 2: Single camera client (recommended)
+python3 camera_client.py --max-cameras 4 --server http://192.168.1.100:5002
+```
+
+#### Troubleshooting Commands
+```bash
+# Check if server is running
+curl -I http://localhost:5002
+
+# Check camera permissions (Linux/Mac)
+ls -la /dev/video*
+
+# Test OpenCV camera access
+python3 -c "import cv2; print('OpenCV version:', cv2.__version__)"
+
+# Check network connectivity
+python3 -c "import requests; print(requests.get('http://192.168.1.100:5002/api/distributed/stats').status_code)"
+```
 
 ## 📊 Features Overview
 

@@ -187,3 +187,4 @@ All endpoints return JSON responses with the following structure:
 - OpenCV embeddings: `opencv_embeddings/` directory
 - Upload directory: `uploads/` directory
 - Timeline snapshots: `web_app/timeline_snapshots/` directory
+

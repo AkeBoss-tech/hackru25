@@ -9,15 +9,28 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
-import google.generativeai as genai
 from PIL import Image
 import time
 import threading
 from queue import Queue
 
+# Try to import Google AI modules
+try:
+    import google.generativeai as genai
+    GOOGLE_AI_AVAILABLE = True
+except ImportError:
+    GOOGLE_AI_AVAILABLE = False
+    genai = None
+
 # Import Gemini modules
-from .gemini_service import GeminiImageAnalyzer
-from .gemini_config import GeminiConfig
+try:
+    from .gemini_service import GeminiImageAnalyzer
+    from .gemini_config import GeminiConfig
+    GEMINI_MODULES_AVAILABLE = True
+except ImportError:
+    GEMINI_MODULES_AVAILABLE = False
+    GeminiImageAnalyzer = None
+    GeminiConfig = None
 
 class AutoGeminiReporter:
     """
@@ -33,6 +46,19 @@ class AutoGeminiReporter:
             api_key: Google AI API key (if None, will try to load from environment)
         """
         self.logger = logging.getLogger(__name__)
+        
+        # Check if Google AI is available
+        if not GOOGLE_AI_AVAILABLE:
+            self.logger.warning("Google AI library not available. Auto-reporting disabled.")
+            self.logger.info("Please install google-generativeai: pip install google-generativeai")
+            self.enabled = False
+            return
+        
+        # Check if Gemini modules are available
+        if not GEMINI_MODULES_AVAILABLE:
+            self.logger.warning("Gemini service modules not available. Auto-reporting disabled.")
+            self.enabled = False
+            return
         
         # Initialize config
         self.config = GeminiConfig()

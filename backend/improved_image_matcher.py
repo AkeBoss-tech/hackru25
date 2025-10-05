@@ -218,10 +218,13 @@ class ImprovedImageMatcher:
                 min_similarity=threshold
             )
             
-            # Add method information
+            # Add method information and normalize confidence key
             for result in results:
                 result['method'] = 'opencv'
                 result['methods_used'] = ['opencv']
+                # Normalize similarity_score to confidence
+                if 'similarity_score' in result and 'confidence' not in result:
+                    result['confidence'] = result['similarity_score']
             
             return results
         except Exception as e:
@@ -249,10 +252,13 @@ class ImprovedImageMatcher:
                 tolerance=1.0 - threshold  # Convert threshold to distance tolerance
             )
             
-            # Add method information
+            # Add method information and normalize confidence key
             for result in results:
                 result['method'] = 'vector'
                 result['methods_used'] = ['vector']
+                # Normalize similarity_score to confidence
+                if 'similarity_score' in result and 'confidence' not in result:
+                    result['confidence'] = result['similarity_score']
             
             return results
         except Exception as e:
@@ -386,6 +392,107 @@ class ImprovedImageMatcher:
         
         return stats
     
+    def draw_face_labels(self, image: np.ndarray, detections: List[Dict], 
+                        include_confidence: bool = True) -> np.ndarray:
+        """
+        Draw name labels on detected faces in an image.
+        
+        Args:
+            image: Input image as numpy array
+            detections: List of detection results with face regions and names
+            include_confidence: Whether to include confidence scores in labels
+            
+        Returns:
+            Image with face labels drawn
+        """
+        if image is None or not detections:
+            return image
+        
+        # Create a copy to avoid modifying the original
+        labeled_image = image.copy()
+        
+        for detection in detections:
+            # Get face region
+            face_region = detection.get('face_region')
+            if not face_region:
+                continue
+            
+            x, y, w, h = face_region
+            
+            # Get name and confidence
+            name = "Unknown"
+            confidence = 0.0
+            
+            # Extract name from different possible sources
+            if 'offender_info' in detection and detection['offender_info']:
+                name = detection['offender_info'].get('name', 'Unknown Offender')
+            elif 'name' in detection:
+                name = detection['name']
+            elif 'family_member' in detection:
+                name = detection['family_member']
+            
+            # Extract confidence
+            confidence = detection.get('confidence', 0.0)
+            
+            # Determine label color based on detection type
+            if 'offender_info' in detection:
+                # Sex offender - red
+                color = (0, 0, 255)  # Red in BGR
+                label_type = "SEX OFFENDER"
+            elif 'family_member' in detection or 'is_family' in detection:
+                # Family member - green
+                color = (0, 255, 0)  # Green in BGR
+                label_type = "FAMILY"
+            else:
+                # Unknown person - yellow
+                color = (0, 255, 255)  # Yellow in BGR
+                label_type = "UNKNOWN"
+            
+            # Create label text
+            if include_confidence:
+                label_text = f"{label_type}: {name} ({confidence:.2f})"
+            else:
+                label_text = f"{label_type}: {name}"
+            
+            # Draw rectangle around face
+            cv2.rectangle(labeled_image, (x, y), (x + w, y + h), color, 2)
+            
+            # Calculate text size and position
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.6
+            thickness = 2
+            
+            # Get text size
+            (text_width, text_height), baseline = cv2.getTextSize(
+                label_text, font, font_scale, thickness
+            )
+            
+            # Position text above the face rectangle
+            text_x = x
+            text_y = y - 10 if y - 10 > text_height else y + h + text_height + 10
+            
+            # Draw background rectangle for text
+            cv2.rectangle(
+                labeled_image,
+                (text_x, text_y - text_height - baseline),
+                (text_x + text_width, text_y + baseline),
+                color,
+                -1
+            )
+            
+            # Draw text
+            cv2.putText(
+                labeled_image,
+                label_text,
+                (text_x, text_y),
+                font,
+                font_scale,
+                (255, 255, 255),  # White text
+                thickness
+            )
+        
+        return labeled_image
+
     def test_detection(self, image_path: str) -> Dict:
         """
         Test face detection on an image.

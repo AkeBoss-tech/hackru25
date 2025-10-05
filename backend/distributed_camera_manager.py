@@ -9,6 +9,7 @@ import time
 import threading
 import logging
 import base64
+import os
 from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
 import json
@@ -350,7 +351,7 @@ class DistributedCameraManager:
             # Check for family members first
             family_result = self.check_family_member(frame)
             if family_result:
-                self._notify_family_detection(client_id, camera_index, family_result)
+                self._notify_family_detection(client_id, camera_index, family_result, frame)
                 return
             
             # Detect faces
@@ -393,14 +394,18 @@ class DistributedCameraManager:
         except Exception as e:
             logger.error(f"Error analyzing frame for faces: {e}")
     
-    def _notify_family_detection(self, client_id: str, camera_index: int, result: Dict):
+    def _notify_family_detection(self, client_id: str, camera_index: int, result: Dict, frame: np.ndarray):
         """Notify about family member detection."""
         try:
+            # Create labeled frame with family member name
+            labeled_frame = self.image_matcher.draw_face_labels(frame, [result])
+            
             detection_data = {
                 'client_id': client_id,
                 'camera_index': camera_index,
                 'detection_type': 'family_member',
                 'result': result,
+                'labeled_frame': labeled_frame,  # Include labeled frame
                 'timestamp': datetime.now().isoformat(),
                 'severity': 'info'
             }
@@ -417,11 +422,15 @@ class DistributedCameraManager:
     def _notify_sex_offender_detection(self, client_id: str, camera_index: int, result: Dict, frame: np.ndarray):
         """Notify about sex offender detection."""
         try:
+            # Create labeled frame with name
+            labeled_frame = self.image_matcher.draw_face_labels(frame, [result])
+            
             detection_data = {
                 'client_id': client_id,
                 'camera_index': camera_index,
                 'detection_type': 'sex_offender',
                 'result': result,
+                'labeled_frame': labeled_frame,  # Include labeled frame
                 'timestamp': datetime.now().isoformat(),
                 'severity': 'critical' if result.get('confidence', 0) > 0.7 else 'warning'
             }

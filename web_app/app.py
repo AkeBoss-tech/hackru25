@@ -77,6 +77,7 @@ class WebVideoProcessor:
         self.is_running = False
         self.frame_buffer = None
         self.stats = {}
+        self.logger = logging.getLogger(__name__)
         
     def initialize(self, model_path=None, confidence=0.25, enable_tracking=True, target_classes=None):
         """Initialize the video processor."""
@@ -93,10 +94,10 @@ class WebVideoProcessor:
             self.processor.set_frame_callback(self._on_frame)
             self.processor.set_timeline_event_callback(self._on_timeline_event)
             
-            logger.info("Video processor initialized successfully")
+            self.logger.info("Video processor initialized successfully")
             return True
         except Exception as e:
-            logger.error(f"Failed to initialize video processor: {e}")
+            self.logger.error(f"Failed to initialize video processor: {e}")
             return False
     
     def _on_detection(self, detections, frame, frame_number):
@@ -160,7 +161,7 @@ class WebVideoProcessor:
             socketio.emit('frame_update', frame_data)
             
         except Exception as e:
-            logger.error(f"Error encoding frame: {e}")
+            self.logger.error(f"Error encoding frame: {e}")
     
     def _on_timeline_event(self, timeline_event):
         """Callback for when timeline events are created."""
@@ -168,9 +169,9 @@ class WebVideoProcessor:
             # Emit timeline event to web clients
             event_data = timeline_event.to_dict()
             socketio.emit('timeline_event', event_data)
-            logger.info(f"Timeline event emitted: {event_data['event_id']}")
+            self.logger.info(f"Timeline event emitted: {event_data['event_id']}")
         except Exception as e:
-            logger.error(f"Error handling timeline event: {e}")
+            self.logger.error(f"Error handling timeline event: {e}")
     
     def start_camera_processing(self, camera_index=0):
         """Start processing camera stream."""
@@ -188,7 +189,7 @@ class WebVideoProcessor:
                 )
                 self.stats = stats
             except Exception as e:
-                logger.error(f"Camera processing error: {e}")
+                self.logger.error(f"Camera processing error: {e}")
                 socketio.emit('processing_error', {'error': str(e)})
             finally:
                 self.is_running = False
@@ -214,7 +215,7 @@ class WebVideoProcessor:
                 )
                 self.stats = stats
             except Exception as e:
-                logger.error(f"Video processing error: {e}")
+                self.logger.error(f"Video processing error: {e}")
                 socketio.emit('processing_error', {'error': str(e)})
             finally:
                 self.is_running = False
@@ -2178,13 +2179,19 @@ def upload_family_member_photo():
 
 
 if __name__ == '__main__':
-    # Initialize video processor
-    if not web_processor.initialize():
-        logger.error("Failed to initialize video processor")
-        sys.exit(1)
+    # Initialize video processor (non-blocking)
+    try:
+        if not web_processor.initialize():
+            logger.warning("Video processor initialization failed, but continuing with server startup")
+    except Exception as e:
+        logger.warning(f"Video processor initialization error: {e}, but continuing with server startup")
     
     # Setup notification system
-    setup_notification_callbacks()
+    try:
+        setup_notification_callbacks()
+    except Exception as e:
+        logger.warning(f"Notification system setup failed: {e}, but continuing with server startup")
     
     # Start Flask-SocketIO app
+    logger.info("Starting Flask-SocketIO server on port 5002...")
     socketio.run(app, debug=True, host='0.0.0.0', port=5002, allow_unsafe_werkzeug=True)

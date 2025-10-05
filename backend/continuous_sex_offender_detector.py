@@ -548,3 +548,4 @@ def initialize_continuous_sex_offender_detector(config: Optional[Config] = None)
     global _continuous_sex_offender_detector
     _continuous_sex_offender_detector = ContinuousSexOffenderDetector(config)
     return _continuous_sex_offender_detector
+

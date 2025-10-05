@@ -219,3 +219,4 @@ For issues or questions:
 ---
 
 **⚠️ Important**: This system is designed for security and safety applications. Ensure proper authorization and legal compliance when deploying in production environments.
+
